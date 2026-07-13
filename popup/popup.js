@@ -11,6 +11,11 @@ const state = {
   tab: null,
 };
 
+function setIcon(target, svgMarkup) {
+  const svgDocument = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  target.replaceChildren(document.importNode(svgDocument.documentElement, true));
+}
+
 const TAB_ACTIONS = [
   {
     id: "allow-paste",
@@ -397,7 +402,7 @@ function renderActions() {
     };
     const icon = document.createElement("span");
     icon.className = "action-trigger-icon";
-    icon.innerHTML = getActionIconMarkup(action);
+    setIcon(icon, getActionIconMarkup(action));
     label.appendChild(icon);
 
     const text = document.createElement("span");

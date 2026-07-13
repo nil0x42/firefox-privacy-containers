@@ -104,6 +104,20 @@ test("declares a Firefox Manifest V3 event page without widening host access", (
       matches: ["<all_urls>"],
     },
   ]);
+  assert.strictEqual(manifest.browser_specific_settings.gecko.strict_min_version, "142.0");
+  assert.deepStrictEqual(
+    manifest.browser_specific_settings.gecko.data_collection_permissions,
+    { required: ["none"] },
+  );
+});
+
+test("avoids unsupported contextual identity APIs and HTML icon injection", () => {
+  for (const filename of ["options/app.js", "popup/popup.js"]) {
+    const source = fs.readFileSync(path.join(__dirname, "..", filename), "utf8");
+    assert.strictEqual(source.includes("innerHTML"), false);
+    assert.strictEqual(source.includes("getSupportedColors"), false);
+    assert.strictEqual(source.includes("getSupportedIcons"), false);
+  }
 });
 
 test("keeps options color literals centralized in the root palette", () => {

@@ -74,6 +74,6 @@ your control.
 
 ## Compatibility and license
 
-Designed for desktop Firefox 140 and later, with Firefox Containers enabled.
+Designed for desktop Firefox 142 and later, with Firefox Containers enabled.
 
 Released under the [Mozilla Public License 2.0](LICENSE).

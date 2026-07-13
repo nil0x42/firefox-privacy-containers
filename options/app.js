@@ -59,6 +59,15 @@ const EYE_OPEN_ICON_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c5.2 0 9.3 3.7 10.8 6.5.2.3.2.7 0 1C21.3 15.3 17.2 19 12 19S2.7 15.3 1.2 12.5a1 1 0 0 1 0-1C2.7 8.7 6.8 5 12 5Zm0 2C8.1 7 4.8 9.6 3.3 12 4.8 14.4 8.1 17 12 17s7.2-2.6 8.7-5C19.2 9.6 15.9 7 12 7Zm0 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" fill="currentColor"/></svg>';
 const EYE_CLOSED_ICON_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.3 2 18.7 18.7-1.4 1.4-3.1-3.1A12 12 0 0 1 12 19c-5.2 0-9.3-3.7-10.8-6.5a1 1 0 0 1 0-1 15 15 0 0 1 4.5-4.8L1.9 3.4 3.3 2Zm4 6.8A12.4 12.4 0 0 0 3.3 12C4.8 14.4 8.1 17 12 17c1.4 0 2.6-.3 3.8-.8l-2.2-2.2a4.5 4.5 0 0 1-5.6-5.6L7.3 8.8Zm4.2.2 3.5 3.5a2.5 2.5 0 0 0-3.5-3.5ZM12 5c5.2 0 9.3 3.7 10.8 6.5.2.3.2.7 0 1a15 15 0 0 1-3.8 4.3l-1.5-1.5c1.4-.9 2.5-2.1 3.2-3.3C19.2 9.6 15.9 7 12 7c-1 0-2 .2-2.9.5L7.4 5.8A11 11 0 0 1 12 5Z" fill="currentColor"/></svg>';
+
+function createIcon(svgMarkup) {
+  const svgDocument = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  return document.importNode(svgDocument.documentElement, true);
+}
+
+function setIcon(target, svgMarkup) {
+  target.replaceChildren(createIcon(svgMarkup));
+}
 const HEADER_TEXTAREA_PLACEHOLDER = "X-Example: value\nX-Trace-Id: 12345";
 const HOST_RULE_PATTERNS_PLACEHOLDER =
   "example.com\n*.corp.internal\ndev-*.tesla.com";
@@ -503,7 +512,7 @@ function createIconButton(title, svgMarkup, handler, className) {
   button.classList.add("card-top-actionable");
   button.title = title;
   button.setAttribute("aria-label", title);
-  button.innerHTML = svgMarkup;
+  setIcon(button, svgMarkup);
   button.onclick = async (event) => {
     clearStatus();
 
@@ -605,11 +614,11 @@ function createPasswordField(value, placeholder) {
   toggle.className = "password-toggle-button";
   toggle.setAttribute("aria-label", "Show password");
   toggle.title = "Show password";
-  toggle.innerHTML = EYE_OPEN_ICON_SVG;
+  setIcon(toggle, EYE_OPEN_ICON_SVG);
 
   const sync = () => {
     const isVisible = input.type === "text";
-    toggle.innerHTML = isVisible ? EYE_CLOSED_ICON_SVG : EYE_OPEN_ICON_SVG;
+    setIcon(toggle, isVisible ? EYE_CLOSED_ICON_SVG : EYE_OPEN_ICON_SVG);
     toggle.setAttribute("aria-label", isVisible ? "Hide password" : "Show password");
     toggle.title = isVisible ? "Hide password" : "Show password";
   };
@@ -900,7 +909,7 @@ function createContainerProxyPicker(selectedProxyId, onChange) {
 
   const triggerIcon = document.createElement("span");
   triggerIcon.className = "container-proxy-trigger-icon";
-  triggerIcon.innerHTML = MOVE_DOWN_ICON_SVG;
+  setIcon(triggerIcon, MOVE_DOWN_ICON_SVG);
   triggerSide.appendChild(triggerIcon);
 
   const panel = document.createElement("div");
@@ -1699,7 +1708,7 @@ function getIconSvgMarkup(icon) {
 }
 
 function setIconGlyph(target, icon) {
-  target.innerHTML = getIconSvgMarkup(icon || "circle");
+  setIcon(target, getIconSvgMarkup(icon || "circle"));
 }
 
 function isContainerAppearanceEditable(container) {
@@ -2393,24 +2402,13 @@ function markDraftDirty() {
 
 async function refreshState(options) {
   const preserveDraft = Boolean(options && options.preserveDraft);
-  const getSupportedColors = browser.contextualIdentities.getSupportedColors
-    ? browser.contextualIdentities.getSupportedColors()
-    : Promise.resolve(FALLBACK_COLOR_CHOICES);
-  const getSupportedIcons = browser.contextualIdentities.getSupportedIcons
-    ? browser.contextualIdentities.getSupportedIcons()
-    : Promise.resolve(
-        Shared.CONTEXTUAL_ICONS.map((icon) => ({
-          icon,
-        })),
-      );
-
   const [bundle, containers, commands, colorChoices, iconChoices] =
     await Promise.all([
       Shared.loadConfigBundle(),
       browser.contextualIdentities.query({}),
       browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
-      getSupportedColors,
-      getSupportedIcons,
+      Promise.resolve(FALLBACK_COLOR_CHOICES),
+      Promise.resolve(Shared.CONTEXTUAL_ICONS.map((icon) => ({ icon }))),
     ]);
 
   if (!preserveDraft || (!state.dirty && !state.saveInFlight)) {
@@ -2926,13 +2924,21 @@ function renderHeaderPrimaryAction() {
   button.type = "button";
   button.className = "header-primary-action";
   button.setAttribute("aria-label", descriptor.label);
-  button.innerHTML = `
-    <span class="header-primary-action-icon" aria-hidden="true">${ADD_ICON_SVG}</span>
-    <span class="header-primary-action-copy">
-      <span class="header-primary-action-caption">Active tab action</span>
-      <span class="header-primary-action-label">${descriptor.label}</span>
-    </span>
-  `;
+  const icon = document.createElement("span");
+  icon.className = "header-primary-action-icon";
+  icon.setAttribute("aria-hidden", "true");
+  setIcon(icon, ADD_ICON_SVG);
+  button.appendChild(icon);
+  const copy = document.createElement("span");
+  copy.className = "header-primary-action-copy";
+  const caption = document.createElement("span");
+  caption.className = "header-primary-action-caption";
+  caption.textContent = "Active tab action";
+  const label = document.createElement("span");
+  label.className = "header-primary-action-label";
+  label.textContent = descriptor.label;
+  copy.append(caption, label);
+  button.appendChild(copy);
   button.onclick = async () => {
     clearStatus();
 
@@ -3012,7 +3018,7 @@ function createShortcutEntry(label, commandName, helpText) {
 
   const icon = document.createElement("span");
   icon.className = "shortcut-entry-icon";
-  icon.innerHTML = KEYBOARD_ICON_SVG;
+  setIcon(icon, KEYBOARD_ICON_SVG);
   title.appendChild(icon);
 
   const text = document.createElement("span");
@@ -3065,7 +3071,7 @@ function createShortcutEntry(label, commandName, helpText) {
   clearButton.dataset.commandName = commandName;
   clearButton.title = "Reset shortcut";
   clearButton.setAttribute("aria-label", "Reset shortcut");
-  clearButton.innerHTML = CLEAR_ICON_SVG;
+  setIcon(clearButton, CLEAR_ICON_SVG);
   clearButton.onclick = async () => {
     const activeShortcut = await updateCommandShortcut(
       commandName,
