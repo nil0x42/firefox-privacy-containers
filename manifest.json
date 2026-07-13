@@ -1,0 +1,254 @@
+{
+  "manifest_version": 3,
+  "name": "Privacy Containers",
+  "version": "0.1.0",
+  "description": "Isolated browser containers with per-container proxy routing",
+  "icons": {
+    "512": "res/icon.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "privacy-containers@addon",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
+  "permissions": [
+    "contextualIdentities",
+    "cookies",
+    "webRequest",
+    "webRequestBlocking",
+    "notifications",
+    "proxy",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_icon": "res/icon.png",
+    "default_title": "Privacy Containers",
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "scripts": ["background/app.js"],
+    "type": "module"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked/blocked.html"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "open-current-container-tab": {
+      "description": "Open a new tab in the current container"
+    },
+    "go-one-tab-left": {
+      "description": "Go one tab to the left"
+    },
+    "go-one-tab-right": {
+      "description": "Go one tab to the right"
+    },
+    "move-tab-left": {
+      "description": "Move tab left"
+    },
+    "move-tab-right": {
+      "description": "Move tab right"
+    },
+    "pin-unpin-tab": {
+      "description": "Pin/Unpin tab"
+    },
+    "open-container-slot-0": {
+      "description": "Open a new tab on slot 0"
+    },
+    "open-container-slot-1": {
+      "description": "Open a new tab on slot 1"
+    },
+    "open-container-slot-2": {
+      "description": "Open a new tab on slot 2"
+    },
+    "open-container-slot-3": {
+      "description": "Open a new tab on slot 3"
+    },
+    "open-container-slot-4": {
+      "description": "Open a new tab on slot 4"
+    },
+    "open-container-slot-5": {
+      "description": "Open a new tab on slot 5"
+    },
+    "open-container-slot-6": {
+      "description": "Open a new tab on slot 6"
+    },
+    "open-container-slot-7": {
+      "description": "Open a new tab on slot 7"
+    },
+    "open-container-slot-8": {
+      "description": "Open a new tab on slot 8"
+    },
+    "open-container-slot-9": {
+      "description": "Open a new tab on slot 9"
+    },
+    "open-container-slot-10": {
+      "description": "Open a new tab on slot 10"
+    },
+    "open-container-slot-11": {
+      "description": "Open a new tab on slot 11"
+    },
+    "open-container-slot-12": {
+      "description": "Open a new tab on slot 12"
+    },
+    "open-container-slot-13": {
+      "description": "Open a new tab on slot 13"
+    },
+    "open-container-slot-14": {
+      "description": "Open a new tab on slot 14"
+    },
+    "open-container-slot-15": {
+      "description": "Open a new tab on slot 15"
+    },
+    "open-container-slot-16": {
+      "description": "Open a new tab on slot 16"
+    },
+    "open-container-slot-17": {
+      "description": "Open a new tab on slot 17"
+    },
+    "open-container-slot-18": {
+      "description": "Open a new tab on slot 18"
+    },
+    "open-container-slot-19": {
+      "description": "Open a new tab on slot 19"
+    },
+    "open-container-slot-20": {
+      "description": "Open a new tab on slot 20"
+    },
+    "open-container-slot-21": {
+      "description": "Open a new tab on slot 21"
+    },
+    "open-container-slot-22": {
+      "description": "Open a new tab on slot 22"
+    },
+    "open-container-slot-23": {
+      "description": "Open a new tab on slot 23"
+    },
+    "open-container-slot-24": {
+      "description": "Open a new tab on slot 24"
+    },
+    "open-container-slot-25": {
+      "description": "Open a new tab on slot 25"
+    },
+    "open-container-slot-26": {
+      "description": "Open a new tab on slot 26"
+    },
+    "open-container-slot-27": {
+      "description": "Open a new tab on slot 27"
+    },
+    "open-container-slot-28": {
+      "description": "Open a new tab on slot 28"
+    },
+    "open-container-slot-29": {
+      "description": "Open a new tab on slot 29"
+    },
+    "reopen-current-tab-in-container-slot-0": {
+      "description": "Reopen current tab on slot 0"
+    },
+    "reopen-current-tab-in-container-slot-1": {
+      "description": "Reopen current tab on slot 1"
+    },
+    "reopen-current-tab-in-container-slot-2": {
+      "description": "Reopen current tab on slot 2"
+    },
+    "reopen-current-tab-in-container-slot-3": {
+      "description": "Reopen current tab on slot 3"
+    },
+    "reopen-current-tab-in-container-slot-4": {
+      "description": "Reopen current tab on slot 4"
+    },
+    "reopen-current-tab-in-container-slot-5": {
+      "description": "Reopen current tab on slot 5"
+    },
+    "reopen-current-tab-in-container-slot-6": {
+      "description": "Reopen current tab on slot 6"
+    },
+    "reopen-current-tab-in-container-slot-7": {
+      "description": "Reopen current tab on slot 7"
+    },
+    "reopen-current-tab-in-container-slot-8": {
+      "description": "Reopen current tab on slot 8"
+    },
+    "reopen-current-tab-in-container-slot-9": {
+      "description": "Reopen current tab on slot 9"
+    },
+    "reopen-current-tab-in-container-slot-10": {
+      "description": "Reopen current tab on slot 10"
+    },
+    "reopen-current-tab-in-container-slot-11": {
+      "description": "Reopen current tab on slot 11"
+    },
+    "reopen-current-tab-in-container-slot-12": {
+      "description": "Reopen current tab on slot 12"
+    },
+    "reopen-current-tab-in-container-slot-13": {
+      "description": "Reopen current tab on slot 13"
+    },
+    "reopen-current-tab-in-container-slot-14": {
+      "description": "Reopen current tab on slot 14"
+    },
+    "reopen-current-tab-in-container-slot-15": {
+      "description": "Reopen current tab on slot 15"
+    },
+    "reopen-current-tab-in-container-slot-16": {
+      "description": "Reopen current tab on slot 16"
+    },
+    "reopen-current-tab-in-container-slot-17": {
+      "description": "Reopen current tab on slot 17"
+    },
+    "reopen-current-tab-in-container-slot-18": {
+      "description": "Reopen current tab on slot 18"
+    },
+    "reopen-current-tab-in-container-slot-19": {
+      "description": "Reopen current tab on slot 19"
+    },
+    "reopen-current-tab-in-container-slot-20": {
+      "description": "Reopen current tab on slot 20"
+    },
+    "reopen-current-tab-in-container-slot-21": {
+      "description": "Reopen current tab on slot 21"
+    },
+    "reopen-current-tab-in-container-slot-22": {
+      "description": "Reopen current tab on slot 22"
+    },
+    "reopen-current-tab-in-container-slot-23": {
+      "description": "Reopen current tab on slot 23"
+    },
+    "reopen-current-tab-in-container-slot-24": {
+      "description": "Reopen current tab on slot 24"
+    },
+    "reopen-current-tab-in-container-slot-25": {
+      "description": "Reopen current tab on slot 25"
+    },
+    "reopen-current-tab-in-container-slot-26": {
+      "description": "Reopen current tab on slot 26"
+    },
+    "reopen-current-tab-in-container-slot-27": {
+      "description": "Reopen current tab on slot 27"
+    },
+    "reopen-current-tab-in-container-slot-28": {
+      "description": "Reopen current tab on slot 28"
+    },
+    "reopen-current-tab-in-container-slot-29": {
+      "description": "Reopen current tab on slot 29"
+    }
+  },
+  "options_ui": {
+    "page": "options/app.html",
+    "open_in_tab": true,
+    "browser_style": false
+  }
+}

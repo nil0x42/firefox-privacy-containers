@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Privacy Containers</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <section class="target-card">
+        <p class="eyebrow">Current tab</p>
+        <strong id="target-title">Loading…</strong>
+        <p id="target-meta" class="muted"></p>
+      </section>
+
+      <section class="action-list" id="action-list"></section>
+
+      <section class="footer-actions">
+        <button id="open-settings" class="highlight" type="button">
+          Containers &amp; proxies config
+        </button>
+      </section>
+
+      <p id="status" class="status" hidden></p>
+    </main>
+
+    <script src="../utils/shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

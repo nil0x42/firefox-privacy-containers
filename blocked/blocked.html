@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Navigation blocked</title>
+    <link rel="stylesheet" href="blocked.css" />
+  </head>
+  <body>
+    <main class="blocked-shell">
+      <section class="blocked-card">
+        <p class="blocked-eyebrow">Host Rule</p>
+        <h1>Navigation blocked</h1>
+        <p id="blocked-summary" class="blocked-summary">
+          This navigation was stopped by a Host Rule.
+        </p>
+
+        <dl class="blocked-facts">
+          <div>
+            <dt>Rule</dt>
+            <dd id="blocked-rule">Unknown rule</dd>
+          </div>
+          <div>
+            <dt>Host</dt>
+            <dd id="blocked-host">Unknown host</dd>
+          </div>
+          <div>
+            <dt>Container</dt>
+            <dd id="blocked-container">Unknown container</dd>
+          </div>
+        </dl>
+
+        <section class="blocked-link-block" aria-labelledby="blocked-url-label">
+          <h2 id="blocked-url-label">Original URL</h2>
+          <div class="blocked-link-surface">
+            <span class="blocked-link-chip" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" focusable="false">
+                <path
+                  d="M10.6 13.4a1 1 0 0 1 0-1.4l3-3a3 3 0 0 1 4.2 4.2l-1.8 1.8a3 3 0 0 1-4.2 0 1 1 0 1 1 1.4-1.4 1 1 0 0 0 1.4 0l1.8-1.8a1 1 0 0 0-1.4-1.4l-3 3a1 1 0 0 1-1.4 0Zm2.8-2.8a1 1 0 0 1 0 1.4l-3 3a3 3 0 0 1-4.2-4.2L8 9.1a3 3 0 0 1 4.2 0 1 1 0 1 1-1.4 1.4 1 1 0 0 0-1.4 0L7.6 12.2a1 1 0 0 0 1.4 1.4l3-3a1 1 0 0 1 1.4 0Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </span>
+            <div class="blocked-link-input-wrap">
+              <input
+                id="blocked-url"
+                class="blocked-link-input"
+                type="text"
+                value=""
+                readonly
+                spellcheck="false"
+              />
+            </div>
+            <button
+              id="blocked-copy-url"
+              class="blocked-copy-button"
+              type="button"
+              title="Copy original URL"
+              aria-label="Copy original URL"
+            >
+              <span class="blocked-copy-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" focusable="false">
+                  <path
+                    d="M9 3a2 2 0 0 0-2 2v1H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V8.4a2 2 0 0 0-.6-1.4l-3.4-3.4A2 2 0 0 0 13.6 3H9Zm0 2h4v3a2 2 0 0 0 2 2h3v5h-1V8a2 2 0 0 0-2-2H9V5Zm6 .4L17.6 8H15V5.4ZM6 8h8v10H6V8Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+            </button>
+          </div>
+          <p
+            id="blocked-copy-notice"
+            class="blocked-copy-notice"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></p>
+        </section>
+
+        <section id="blocked-allowed-section" class="blocked-actions" hidden>
+          <h2>Allowed containers</h2>
+          <p class="blocked-actions-copy">
+            This Host Rule only allows this host in the containers below.
+          </p>
+          <p id="blocked-unavailable" class="blocked-actions-copy" hidden></p>
+          <div id="blocked-allowed-list" class="blocked-actions-list"></div>
+        </section>
+
+        <p id="blocked-error" class="blocked-error" hidden></p>
+      </section>
+    </main>
+
+    <script src="../utils/shared.js"></script>
+    <script src="blocked.js"></script>
+  </body>
+</html>

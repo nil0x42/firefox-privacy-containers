@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Privacy Containers</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header id="sticky-header" class="sticky-header">
+      <div class="sticky-header-surface">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">
+            <img
+              src="../res/icon.png"
+              alt=""
+              width="48"
+              height="48"
+              draggable="false"
+            />
+          </div>
+          <div class="brand-copy">
+            <h1>Privacy Containers</h1>
+          </div>
+        </div>
+
+        <div class="sticky-header-main">
+          <div class="tab-strip-shell">
+            <nav id="tab-nav" class="tab-nav" aria-label="Options sections"></nav>
+          </div>
+          <div id="header-primary-action-slot" class="header-primary-action-slot"></div>
+        </div>
+      </div>
+    </header>
+    <div id="status-layer" class="status-layer">
+      <div id="status-shell" class="status-shell" hidden>
+        <div class="status-shell-top">
+          <div id="status" role="status" aria-live="polite"></div>
+          <div id="status-actions" class="status-shell-actions" hidden>
+            <button id="refresh-config" type="button" class="subtle-button" hidden>
+              Refresh
+            </button>
+          </div>
+          <button
+            id="dismiss-status"
+            type="button"
+            class="status-close-button"
+            aria-label="Dismiss status message"
+            title="Dismiss status message"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <main id="app"></main>
+
+    <script src="../utils/shared.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

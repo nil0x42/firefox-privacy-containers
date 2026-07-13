@@ -1,0 +1,2 @@
+# Generated packages and local working material must never enter the repository.
+/dist/
