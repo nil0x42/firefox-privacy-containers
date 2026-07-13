@@ -61,8 +61,16 @@ const EYE_CLOSED_ICON_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.3 2 18.7 18.7-1.4 1.4-3.1-3.1A12 12 0 0 1 12 19c-5.2 0-9.3-3.7-10.8-6.5a1 1 0 0 1 0-1 15 15 0 0 1 4.5-4.8L1.9 3.4 3.3 2Zm4 6.8A12.4 12.4 0 0 0 3.3 12C4.8 14.4 8.1 17 12 17c1.4 0 2.6-.3 3.8-.8l-2.2-2.2a4.5 4.5 0 0 1-5.6-5.6L7.3 8.8Zm4.2.2 3.5 3.5a2.5 2.5 0 0 0-3.5-3.5ZM12 5c5.2 0 9.3 3.7 10.8 6.5.2.3.2.7 0 1a15 15 0 0 1-3.8 4.3l-1.5-1.5c1.4-.9 2.5-2.1 3.2-3.3C19.2 9.6 15.9 7 12 7c-1 0-2 .2-2.9.5L7.4 5.8A11 11 0 0 1 12 5Z" fill="currentColor"/></svg>';
 
 function createIcon(svgMarkup) {
-  const svgDocument = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
-  return document.importNode(svgDocument.documentElement, true);
+  const iconDocument = new DOMParser().parseFromString(svgMarkup, "text/html");
+  const icon = iconDocument.body.firstElementChild;
+  if (
+    !icon ||
+    icon.localName !== "svg" ||
+    icon.namespaceURI !== "http://www.w3.org/2000/svg"
+  ) {
+    throw new Error("Invalid SVG icon markup");
+  }
+  return document.importNode(icon, true);
 }
 
 function setIcon(target, svgMarkup) {

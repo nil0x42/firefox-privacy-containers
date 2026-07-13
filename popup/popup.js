@@ -12,8 +12,16 @@ const state = {
 };
 
 function setIcon(target, svgMarkup) {
-  const svgDocument = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
-  target.replaceChildren(document.importNode(svgDocument.documentElement, true));
+  const iconDocument = new DOMParser().parseFromString(svgMarkup, "text/html");
+  const icon = iconDocument.body.firstElementChild;
+  if (
+    !icon ||
+    icon.localName !== "svg" ||
+    icon.namespaceURI !== "http://www.w3.org/2000/svg"
+  ) {
+    throw new Error("Invalid SVG icon markup");
+  }
+  target.replaceChildren(document.importNode(icon, true));
 }
 
 const TAB_ACTIONS = [

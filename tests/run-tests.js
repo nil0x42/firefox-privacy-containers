@@ -117,6 +117,8 @@ test("avoids unsupported contextual identity APIs and HTML icon injection", () =
     assert.strictEqual(source.includes("innerHTML"), false);
     assert.strictEqual(source.includes("getSupportedColors"), false);
     assert.strictEqual(source.includes("getSupportedIcons"), false);
+    assert.ok(source.includes('parseFromString(svgMarkup, "text/html")'));
+    assert.ok(source.includes('namespaceURI !== "http://www.w3.org/2000/svg"'));
   }
 });
 
