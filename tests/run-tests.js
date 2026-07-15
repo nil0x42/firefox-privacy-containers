@@ -2388,29 +2388,339 @@ function loadBackgroundModule() {
   };
 }
 
-test("registers onBeforeRequest only when enabled host rules exist", () => {
+test("registers all network listeners synchronously and only once", () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.bindBrowserEvents();
+    assert.strictEqual(ctx.browserMock.proxy.onRequest.listeners.length, 1);
+    assert.strictEqual(
+      ctx.browserMock.webRequest.onBeforeSendHeaders.listeners.length,
+      1,
+    );
+    assert.strictEqual(
+      ctx.browserMock.webRequest.onAuthRequired.listeners.length,
+      1,
+    );
+    assert.strictEqual(ctx.browserMock.webRequest.onBeforeRequest.listeners.length, 1);
+
+    ctx.background.setContainerCache([]);
+    ctx.background.state.config = Shared.normalizeConfig({ hostRules: [] });
+    ctx.background.rebuildRuntime();
+    assert.strictEqual(ctx.browserMock.proxy.onRequest.listeners.length, 1);
+    assert.strictEqual(
+      ctx.browserMock.webRequest.onBeforeSendHeaders.listeners.length,
+      1,
+    );
+    assert.strictEqual(
+      ctx.browserMock.webRequest.onAuthRequired.listeners.length,
+      1,
+    );
+    assert.strictEqual(ctx.browserMock.webRequest.onBeforeRequest.listeners.length, 1);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("holds startup requests until the routing runtime is ready", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.bindBrowserEvents();
+    const pendingResult = ctx.background.setProxy({
+      url: "https://example.com/",
+      method: "GET",
+      cookieStoreId: "firefox-container-1",
+      requestId: "startup-request",
+    });
+    let settled = false;
+    pendingResult.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    assert.strictEqual(settled, false);
+
+    ctx.background.setContainerCache([]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      proxies: [
+        {
+          id: "proxy-1",
+          type: "http",
+          host: "127.0.0.1",
+          port: 8080,
+        },
+      ],
+      containerSettings: {
+        "firefox-container-1": {
+          proxyId: "proxy-1",
+        },
+      },
+    });
+    ctx.background.rebuildRuntime();
+
+    const result = await pendingResult;
+    assert.strictEqual(result[0].host, "127.0.0.1");
+    assert.strictEqual(result[0].port, 8080);
+    assert.strictEqual(result[1], null);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("fails closed when routing initialization cannot complete", async () => {
+  const state = {
+    config: Shared.createDefaultConfig(),
+    routingReady: false,
+    runtime: Shared.compileRuntime(Shared.createDefaultConfig(), []),
+    tabCookieStoreIdByTabId: new Map(),
+    requestContextCachePrimary: {
+      requestId: "",
+      cookieStoreId: "",
+      method: "",
+      url: "",
+      context: null,
+    },
+    requestContextCacheSecondary: {
+      requestId: "",
+      cookieStoreId: "",
+      method: "",
+      url: "",
+      context: null,
+    },
+  };
+  const requestContextCache = createRequestContextCache({ state, Shared });
+  const handlers = createRequestHandlers({
+    Shared,
+    blockedPageStore: {},
+    constants: {
+      PROXY_CONNECTION_ISOLATION_PREFIX: "firefox-privacy-containers",
+      PROXY_FAILOVER_TIMEOUT_SECONDS: 1,
+    },
+    requestContextCache,
+    state,
+    waitForRoutingReady: () => Promise.resolve(false),
+  });
+
+  const result = await handlers.setProxy({
+    url: "https://example.com/",
+    method: "GET",
+    cookieStoreId: "firefox-container-1",
+  });
+  assert.strictEqual(result[0].host, "127.0.0.1");
+  assert.strictEqual(result[0].port, 1);
+  assert.strictEqual(result[1], null);
+});
+
+test("returns a terminal isolated proxy chain with minimal failure quarantine", () => {
   const ctx = loadBackgroundModule();
 
   try {
     ctx.background.setContainerCache([]);
-    ctx.background.state.config = Shared.normalizeConfig({ hostRules: [] });
-    ctx.background.rebuildRuntime();
-    assert.strictEqual(ctx.browserMock.webRequest.onBeforeRequest.listeners.length, 0);
-
     ctx.background.state.config = Shared.normalizeConfig({
-      hostRules: [
+      proxies: [
         {
-          id: "rule-1",
-          name: "Block",
-          enabled: true,
-          mode: "blacklist",
-          patterns: ["example.com"],
-          exceptions: [],
+          id: "proxy-1",
+          type: "http",
+          host: "127.0.0.1",
+          port: 8080,
         },
       ],
+      containerSettings: {
+        "firefox-container-1": {
+          proxyId: "proxy-1",
+        },
+      },
     });
     ctx.background.rebuildRuntime();
-    assert.strictEqual(ctx.browserMock.webRequest.onBeforeRequest.listeners.length, 1);
+
+    assert.deepStrictEqual(
+      ctx.background.setProxy({
+        url: "https://example.com/",
+        method: "GET",
+        cookieStoreId: "firefox-container-1",
+      }),
+      [
+        {
+          type: "http",
+          host: "127.0.0.1",
+          port: 8080,
+          failoverTimeout: 1,
+          connectionIsolationKey:
+            "firefox-privacy-containers:firefox-container-1:proxy-1",
+        },
+        null,
+      ],
+    );
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("recovers a missing request container from the tracked tab", () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([]);
+    ctx.background.setTrackedTabs([
+      {
+        id: 42,
+        cookieStoreId: "firefox-container-1",
+      },
+    ]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      proxies: [
+        {
+          id: "proxy-1",
+          type: "http",
+          host: "127.0.0.1",
+          port: 8080,
+        },
+      ],
+      containerSettings: {
+        "firefox-container-1": {
+          proxyId: "proxy-1",
+        },
+      },
+    });
+    ctx.background.rebuildRuntime();
+
+    const recoveredResult = ctx.background.setProxy({
+      url: "https://example.com/",
+      method: "GET",
+      tabId: 42,
+    });
+    assert.strictEqual(recoveredResult[0].host, "127.0.0.1");
+    assert.strictEqual(
+      recoveredResult[0].connectionIsolationKey,
+      "firefox-privacy-containers:firefox-container-1:proxy-1",
+    );
+
+    const unknownTabResult = ctx.background.setProxy({
+      url: "https://example.com/",
+      method: "GET",
+      tabId: 43,
+    });
+    assert.strictEqual(unknownTabResult[0].host, "127.0.0.1");
+    assert.strictEqual(unknownTabResult[0].port, 1);
+    assert.strictEqual(unknownTabResult[1], null);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("uses explicit direct routing only for unassigned or bypassed requests", () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      proxies: [
+        {
+          id: "proxy-1",
+          type: "http",
+          host: "127.0.0.1",
+          port: 8080,
+          bypass: {
+            optionsMethod: true,
+          },
+        },
+      ],
+      containerSettings: {
+        "firefox-container-1": {
+          proxyId: "proxy-1",
+        },
+      },
+    });
+    ctx.background.rebuildRuntime();
+
+    assert.strictEqual(
+      ctx.background.setProxy({
+        url: "https://example.com/",
+        method: "GET",
+        cookieStoreId: "firefox-default",
+      }),
+      null,
+    );
+    assert.strictEqual(
+      ctx.background.setProxy({
+        url: "https://example.com/",
+        method: "OPTIONS",
+        cookieStoreId: "firefox-container-1",
+      }),
+      null,
+    );
+    assert.deepStrictEqual(
+      ctx.background.enforceHostRules({
+        url: "https://example.com/",
+        method: "OPTIONS",
+        type: "xmlhttprequest",
+        cookieStoreId: "firefox-container-1",
+        proxyInfo: { type: "direct" },
+      }),
+      {},
+    );
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("cancels requests when Firefox did not apply the computed proxy route", () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      proxies: [
+        {
+          id: "proxy-1",
+          type: "http",
+          host: "127.0.0.1",
+          port: 8080,
+        },
+      ],
+      containerSettings: {
+        "firefox-container-1": {
+          proxyId: "proxy-1",
+        },
+      },
+    });
+    ctx.background.rebuildRuntime();
+    const details = {
+      url: "https://example.com/",
+      method: "GET",
+      type: "script",
+      cookieStoreId: "firefox-container-1",
+    };
+
+    assert.deepStrictEqual(
+      ctx.background.enforceHostRules({
+        ...details,
+        proxyInfo: {
+          type: "http",
+          host: "127.0.0.1",
+          port: 8080,
+        },
+      }),
+      {},
+    );
+    assert.deepStrictEqual(
+      ctx.background.enforceHostRules({
+        ...details,
+        proxyInfo: { type: "direct" },
+      }),
+      { cancel: true },
+    );
+    assert.deepStrictEqual(
+      ctx.background.enforceHostRules({
+        ...details,
+        proxyInfo: {
+          type: "http",
+          host: "127.0.0.1",
+          port: 8081,
+        },
+      }),
+      { cancel: true },
+    );
   } finally {
     ctx.cleanup();
   }
@@ -2442,6 +2752,14 @@ test("blocks requests when a container references an invalid proxy", () => {
       ctx.background.state.runtime.proxyRuntime.hasAnyInvalidAssignments,
       true,
     );
+    const proxyResult = ctx.background.setProxy({
+      url: "https://example.com/",
+      method: "GET",
+      cookieStoreId: "firefox-container-1",
+    });
+    assert.strictEqual(proxyResult[0].host, "127.0.0.1");
+    assert.strictEqual(proxyResult[0].port, 1);
+    assert.strictEqual(proxyResult[1], null);
     assert.strictEqual(ctx.browserMock.webRequest.onBeforeRequest.listeners.length, 1);
     assert.deepStrictEqual(
       ctx.background.enforceHostRules({

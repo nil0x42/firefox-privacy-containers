@@ -2227,6 +2227,7 @@
         : null;
 
     return {
+      proxyId: proxy.id,
       type: proxy.type,
       host: proxy.host,
       port: proxy.port,

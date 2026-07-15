@@ -8,7 +8,8 @@ import {
   COMMAND_ERROR_BADGE_DURATION_MS,
   COMMAND_ERROR_BADGE_TEXT,
   DEFAULT_BROWSER_ACTION_TITLE,
-  DIRECT,
+  PROXY_CONNECTION_ISOLATION_PREFIX,
+  PROXY_FAILOVER_TIMEOUT_SECONDS,
 } from "./constants.js";
 import { createBackgroundState } from "./state.js";
 import { createTabIndex } from "./tab-index.js";
@@ -34,13 +35,42 @@ const constants = Object.freeze({
   COMMAND_ERROR_BADGE_DURATION_MS,
   COMMAND_ERROR_BADGE_TEXT,
   DEFAULT_BROWSER_ACTION_TITLE,
-  DIRECT,
+  PROXY_CONNECTION_ISOLATION_PREFIX,
+  PROXY_FAILOVER_TIMEOUT_SECONDS,
 });
 
 export function createBackgroundApp(deps = {}) {
   const browserApi = deps.browser || globalThis.browser;
   const sharedApi = deps.Shared || Shared;
   const state = createBackgroundState(sharedApi);
+  let resolveRoutingReady;
+  let routingReadinessSettled = false;
+  const routingReadyPromise = new Promise((resolve) => {
+    resolveRoutingReady = resolve;
+  });
+
+  function settleRoutingReadiness(isReady) {
+    if (routingReadinessSettled) {
+      return;
+    }
+    routingReadinessSettled = true;
+    resolveRoutingReady(isReady);
+  }
+
+  function markRoutingReady() {
+    if (state.routingReady) {
+      return;
+    }
+    state.routingReady = true;
+    settleRoutingReadiness(true);
+  }
+
+  function markRoutingUnavailable() {
+    if (!state.routingReady) {
+      settleRoutingReadiness(false);
+    }
+  }
+
   const tabIndex = createTabIndex({ Shared: sharedApi, state });
   const containerCache = createContainerCache({
     Shared: sharedApi,
@@ -63,6 +93,7 @@ export function createBackgroundApp(deps = {}) {
     syncNetworkListeners() {
       networkListenerManager?.syncNetworkListeners();
     },
+    onRoutingReady: markRoutingReady,
   });
   const blockedPageStore = createBlockedPageStore({
     Shared: sharedApi,
@@ -79,6 +110,7 @@ export function createBackgroundApp(deps = {}) {
     constants,
     requestContextCache,
     state,
+    waitForRoutingReady: () => routingReadyPromise,
   });
   networkListenerManager = createNetworkListenerManager({
     Shared: sharedApi,
@@ -124,11 +156,26 @@ export function createBackgroundApp(deps = {}) {
     tabIndex,
   });
 
+  function bindBrowserEvents() {
+    // Event-page listeners must be registered synchronously during startup.
+    networkListenerManager.syncNetworkListeners();
+    events.bindBrowserEvents();
+  }
+
+  async function initialize() {
+    try {
+      await lifecycle.initialize();
+    } catch (error) {
+      markRoutingUnavailable();
+      throw error;
+    }
+  }
+
   return {
     BACKGROUND_WRITER_ID,
     BLOCKED_PAGE_PATH,
     addHeaders: requestHandlers.addHeaders,
-    bindBrowserEvents: events.bindBrowserEvents,
+    bindBrowserEvents,
     buildBlockedPageUrl: blockedPageStore.buildBlockedPageUrl,
     buildTabCreateProperties: tabActions.buildTabCreateProperties,
     cleanupBlockedPageEntries: blockedPageStore.cleanupBlockedPageEntries,
@@ -139,7 +186,7 @@ export function createBackgroundApp(deps = {}) {
     getBlockedPageEntry: blockedPageStore.getBlockedPageEntry,
     handleConfigChanged: lifecycle.handleConfigChanged,
     handleRuntimeMessage: events.handleRuntimeMessage,
-    initialize: lifecycle.initialize,
+    initialize,
     openBlockedUrlInContainer: blockedPageStore.openBlockedUrlInContainer,
     rebuildRuntime: runtimeManager.rebuildRuntime,
     removeBlockedPageEntriesForTab: blockedPageStore.removeBlockedPageEntriesForTab,

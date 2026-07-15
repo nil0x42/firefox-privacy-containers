@@ -1,5 +1,10 @@
 export function createRuntimeManager(deps) {
-    const { state, Shared, syncNetworkListeners } = deps;
+    const {
+      state,
+      Shared,
+      syncNetworkListeners,
+      onRoutingReady = () => undefined,
+    } = deps;
 
     function sortEntriesByKey(entries) {
       return entries
@@ -101,6 +106,7 @@ export function createRuntimeManager(deps) {
 
     function rebuildRuntime() {
       refreshRuntimeParts(["proxy", "headers", "hostRules", "shortcuts"]);
+      onRoutingReady();
     }
 
     function applyConfigBundle(bundle) {

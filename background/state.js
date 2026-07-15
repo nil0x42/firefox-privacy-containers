@@ -22,6 +22,7 @@ export function createBackgroundState(Shared) {
       blockedPageEntries: new Map(),
       requestContextCachePrimary: createEmptyRequestContextCacheSlot(),
       requestContextCacheSecondary: createEmptyRequestContextCacheSlot(),
+      routingReady: false,
       listeners: {
         auth: false,
         headers: false,

@@ -49,78 +49,31 @@ export function createNetworkListenerManager(deps) {
       }
     }
 
-    function removeListenerOnce(target, key, listener) {
-      if (!state.listeners[key]) {
-        return;
-      }
-
-      target.removeListener(listener);
-      state.listeners[key] = false;
-      state.networkListenerPatternsByKey[key] = null;
-    }
-
     function syncNetworkListeners() {
-      if (state.runtime.proxyRuntime.hasAnyAssignments) {
-        addNetworkListenerOnce(
-          browser.proxy.onRequest,
-          "proxy",
-          requestHandlers.setProxy,
-        );
-      } else {
-        removeListenerOnce(
-          browser.proxy.onRequest,
-          "proxy",
-          requestHandlers.setProxy,
-        );
-      }
-
-      if (state.runtime.headerRuntime.hasAnyWork) {
-        addNetworkListenerOnce(
-          browser.webRequest.onBeforeSendHeaders,
-          "headers",
-          requestHandlers.addHeaders,
-          ["blocking", "requestHeaders"],
-        );
-      } else {
-        removeListenerOnce(
-          browser.webRequest.onBeforeSendHeaders,
-          "headers",
-          requestHandlers.addHeaders,
-        );
-      }
-
-      if (state.runtime.proxyRuntime.hasAnyAuthAssignments) {
-        addNetworkListenerOnce(
-          browser.webRequest.onAuthRequired,
-          "auth",
-          requestHandlers.onAuthRequired,
-          ["blocking"],
-        );
-      } else {
-        removeListenerOnce(
-          browser.webRequest.onAuthRequired,
-          "auth",
-          requestHandlers.onAuthRequired,
-        );
-      }
-
-      if (
-        state.runtime.hostRuleRuntime.hasAnyEnabledRules ||
-        state.runtime.proxyRuntime.hasAnyInvalidAssignments
-      ) {
-        addNetworkListenerOnce(
-          browser.webRequest.onBeforeRequest,
-          "hostRules",
-          requestHandlers.enforceHostRules,
-          ["blocking"],
-        );
-      } else {
-        removeListenerOnce(
-          browser.webRequest.onBeforeRequest,
-          "hostRules",
-          requestHandlers.enforceHostRules,
-        );
-      }
+      // Persistent event-page registration requires unconditional startup binds.
+      addNetworkListenerOnce(
+        browser.proxy.onRequest,
+        "proxy",
+        requestHandlers.setProxy,
+      );
+      addNetworkListenerOnce(
+        browser.webRequest.onBeforeSendHeaders,
+        "headers",
+        requestHandlers.addHeaders,
+        ["blocking", "requestHeaders"],
+      );
+      addNetworkListenerOnce(
+        browser.webRequest.onAuthRequired,
+        "auth",
+        requestHandlers.onAuthRequired,
+        ["blocking"],
+      );
+      addNetworkListenerOnce(
+        browser.webRequest.onBeforeRequest,
+        "hostRules",
+        requestHandlers.enforceHostRules,
+        ["blocking"],
+      );
     }
 
     return {

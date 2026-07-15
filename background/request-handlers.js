@@ -5,22 +5,77 @@ export function createRequestHandlers(deps) {
       constants,
       requestContextCache,
       blockedPageStore,
+      waitForRoutingReady,
     } = deps;
 
-    function resolveProxyDecision(requestDetails) {
-      const context = requestContextCache.getRequestContext(requestDetails);
+    const ROUTE_DIRECT = "direct";
+    const ROUTE_PROXY = "proxy";
+    const ROUTE_BLOCKED = "blocked";
+
+    function createDirectRoute(context) {
+      return { kind: ROUTE_DIRECT, context };
+    }
+
+    function createBlockedRoute(context) {
+      return { kind: ROUTE_BLOCKED, context };
+    }
+
+    function getRoutingCookieStoreId(requestDetails, context) {
+      if (
+        requestDetails &&
+        typeof requestDetails.cookieStoreId === "string" &&
+        requestDetails.cookieStoreId.trim()
+      ) {
+        return context.cookieStoreId;
+      }
+
+      const tabId = requestDetails && requestDetails.tabId;
+      if (Number.isInteger(tabId) && tabId >= 0) {
+        return state.tabCookieStoreIdByTabId.get(tabId) || "";
+      }
+
+      return context.cookieStoreId;
+    }
+
+    function resolveProxyRoute(requestDetails) {
+      const cachedContext = requestContextCache.getRequestContext(requestDetails);
+      const cookieStoreId = getRoutingCookieStoreId(
+        requestDetails,
+        cachedContext,
+      );
+      if (!cookieStoreId) {
+        return createBlockedRoute(cachedContext);
+      }
+      const context =
+        cookieStoreId === cachedContext.cookieStoreId
+          ? cachedContext
+          : { ...cachedContext, cookieStoreId };
+      const assignment = Shared.resolveProxyAssignment(
+        state.config,
+        context.cookieStoreId,
+      );
+
+      if (assignment.status === "absent") {
+        return createDirectRoute(context);
+      }
+
       const plan =
         state.runtime.proxyRuntime.planByContainerId[context.cookieStoreId];
-      if (!plan) {
-        return constants.DIRECT;
+      if (
+        assignment.status !== "valid" ||
+        !plan ||
+        plan.proxyId !== assignment.proxyId ||
+        !plan.requestInfo
+      ) {
+        return createBlockedRoute(context);
       }
 
       if (!plan.requiresRequestTarget) {
-        return plan.requestInfo || constants.DIRECT;
+        return { kind: ROUTE_PROXY, context, plan };
       }
 
       if (!context.target) {
-        return constants.DIRECT;
+        return createBlockedRoute(context);
       }
 
       if (
@@ -29,18 +84,104 @@ export function createRequestHandlers(deps) {
           context.normalizedHost,
         )
       ) {
-        return constants.DIRECT;
+        return createDirectRoute(context);
       }
 
       if (plan.doNotProxyLocal && context.isLoopback) {
-        return constants.DIRECT;
+        return createDirectRoute(context);
       }
 
-      return plan.requestInfo || constants.DIRECT;
+      return { kind: ROUTE_PROXY, context, plan };
+    }
+
+    function safelyResolveProxyRoute(requestDetails) {
+      try {
+        return resolveProxyRoute(requestDetails);
+      } catch (error) {
+        console.error(
+          "Failed to resolve a proxy route; blocking the request",
+          error,
+        );
+        return createBlockedRoute(null);
+      }
+    }
+
+    function createProxyConnectionIsolationKey(route) {
+      return [
+        constants.PROXY_CONNECTION_ISOLATION_PREFIX,
+        route.context.cookieStoreId,
+        route.plan.proxyId,
+      ].join(":");
+    }
+
+    function createTerminalProxyResult(route) {
+      return [
+        {
+          ...route.plan.requestInfo,
+          failoverTimeout: constants.PROXY_FAILOVER_TIMEOUT_SECONDS,
+          connectionIsolationKey: createProxyConnectionIsolationKey(route),
+        },
+        null,
+      ];
+    }
+
+    function createFailClosedProxyResult() {
+      // onBeforeRequest cancels this route; loopback is the terminal safety net.
+      return [
+        {
+          type: "http",
+          host: "127.0.0.1",
+          port: 1,
+          failoverTimeout: constants.PROXY_FAILOVER_TIMEOUT_SECONDS,
+          connectionIsolationKey: `${constants.PROXY_CONNECTION_ISOLATION_PREFIX}:blocked`,
+        },
+        null,
+      ];
+    }
+
+    function routeToProxyResult(route) {
+      if (route.kind === ROUTE_DIRECT) {
+        // `null` explicitly removes Firefox's pre-existing proxy chain.
+        return null;
+      }
+      if (route.kind === ROUTE_PROXY) {
+        return createTerminalProxyResult(route);
+      }
+      return createFailClosedProxyResult();
+    }
+
+    function safelyCreateProxyResult(requestDetails) {
+      try {
+        return routeToProxyResult(safelyResolveProxyRoute(requestDetails));
+      } catch (error) {
+        console.error(
+          "Failed to build a proxy route; blocking the request",
+          error,
+        );
+        return createFailClosedProxyResult();
+      }
     }
 
     function setProxy(requestDetails) {
-      return resolveProxyDecision(requestDetails);
+      if (state.routingReady) {
+        return safelyCreateProxyResult(requestDetails);
+      }
+
+      try {
+        return Promise.resolve(waitForRoutingReady()).then(
+          (isReady) =>
+            isReady && state.routingReady
+              ? safelyCreateProxyResult(requestDetails)
+              : createFailClosedProxyResult(),
+          () => createFailClosedProxyResult(),
+        );
+      } catch (error) {
+        console.error(
+          "Failed to wait for proxy routing; blocking the request",
+          error,
+        );
+        return createFailClosedProxyResult();
+      }
     }
 
     function addHeaders(requestDetails) {
@@ -64,8 +205,8 @@ export function createRequestHandlers(deps) {
       const proxyInfo = details.proxyInfo;
       if (proxyInfo) {
         return (
-          proxyInfo.host === plan.host &&
-          proxyInfo.port === plan.port &&
+          Shared.normalizeHostRule(proxyInfo.host) === plan.host &&
+          Number(proxyInfo.port) === plan.port &&
           proxyInfo.type === plan.type
         );
       }
@@ -104,12 +245,25 @@ export function createRequestHandlers(deps) {
     }
 
     function enforceHostRules(details) {
-      const context = requestContextCache.getRequestContext(details);
-      if (
-        state.runtime.proxyRuntime.invalidAssignmentByContainerId[
-          context.cookieStoreId
-        ]
-      ) {
+      if (!state.routingReady) {
+        return {
+          cancel: true,
+        };
+      }
+
+      const route = safelyResolveProxyRoute(details);
+      const context = route.context;
+      const proxyInfo = details && details.proxyInfo;
+      const isAppliedRouteValid =
+        route.kind === ROUTE_DIRECT
+          ? !proxyInfo || proxyInfo.type === "direct"
+          : route.kind === ROUTE_PROXY &&
+            proxyInfo &&
+            proxyInfo.type === route.plan.type &&
+            Shared.normalizeHostRule(proxyInfo.host) === route.plan.host &&
+            Number(proxyInfo.port) === route.plan.port;
+
+      if (!isAppliedRouteValid) {
         return {
           cancel: true,
         };
