@@ -1251,6 +1251,14 @@ main {
   gap: 0.35rem;
 }
 
+button.firefox-pref-copy-button {
+  max-width: 100%;
+  margin-inline: 0.22rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+}
+
 .integrity-alert-item {
   margin: 0;
 }

@@ -575,6 +575,112 @@ test("builds tab summaries from visible containers and activable entries", () =>
   }
 });
 
+test("shows the external-link preference warning only for applicable Host Rules", () => {
+  global.PrivacyContainersShared = Shared;
+  delete require.cache[require.resolve("../options/app.js")];
+  const { shouldShowExternalContainerGuessWarning } = require("../options/app.js");
+  const containers = [
+    { cookieStoreId: "firefox-container-1" },
+    { cookieStoreId: "firefox-container-2" },
+  ];
+  const buildConfig = (overrides = {}) => ({
+    hostRules: [
+      {
+        id: "host-rule-1",
+        name: "External target",
+        enabled: true,
+        mode: "blacklist",
+        patterns: ["example.com"],
+        exceptions: ["firefox-container-1", "firefox-container-2"],
+        ...overrides,
+      },
+    ],
+  });
+
+  try {
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(buildConfig(), containers),
+      true,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({ exceptions: ["firefox-container-1"] }),
+        containers,
+      ),
+      false,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({ enabled: false }),
+        containers,
+      ),
+      false,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({ patterns: [] }),
+        containers,
+      ),
+      false,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({
+          mode: "whitelist",
+          exceptions: [Shared.FIREFOX_DEFAULT_CONTAINER],
+        }),
+        containers,
+      ),
+      true,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({
+          mode: "whitelist",
+          exceptions: [
+            Shared.FIREFOX_DEFAULT_CONTAINER,
+            "firefox-container-1",
+          ],
+        }),
+        containers,
+      ),
+      false,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({ mode: "whitelist", exceptions: [] }),
+        containers,
+      ),
+      false,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({
+          exceptions: [
+            Shared.FIREFOX_DEFAULT_CONTAINER,
+            "firefox-container-1",
+            "firefox-container-2",
+          ],
+        }),
+        containers,
+      ),
+      false,
+    );
+    assert.strictEqual(
+      shouldShowExternalContainerGuessWarning(
+        buildConfig({
+          exceptions: ["firefox-container-1", "firefox-container-missing"],
+        }),
+        containers,
+      ),
+      false,
+    );
+  } finally {
+    delete global.PrivacyContainersShared;
+    delete require.cache[require.resolve("../options/app.js")];
+  }
+});
+
 test("maps the active tab to the header create action label", () => {
   global.PrivacyContainersShared = Shared;
   delete require.cache[require.resolve("../options/app.js")];

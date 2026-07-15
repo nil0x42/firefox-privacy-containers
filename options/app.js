@@ -84,6 +84,8 @@ const CONFIG_RELOAD_MESSAGE =
   "Configuration changed elsewhere. Click Refresh to reload it here.";
 const CONFIG_RELOAD_CONFIRMATION =
   "Reload the latest configuration and discard local unsaved changes on this page?";
+const FIREFOX_EXTERNAL_LINK_CONTAINER_PREF =
+  "browser.link.force_default_user_context_id_for_external_opens";
 const TAB_DEFINITIONS = Object.freeze([
   { id: "containers", title: "Containers" },
   { id: "proxies", title: "Proxies" },
@@ -285,6 +287,36 @@ function buildTabSummaries(config, containers) {
 
 function getTabSummaries() {
   return buildTabSummaries(state.config, state.containers);
+}
+
+function shouldShowExternalContainerGuessWarning(config, containers) {
+  const normalizedConfig = Shared.normalizeConfig(config);
+  const liveContainerIds = new Set(
+    (Array.isArray(containers) ? containers : [])
+      .map((container) => container && container.cookieStoreId)
+      .filter(Boolean),
+  );
+
+  return normalizedConfig.hostRules.some((rule) => {
+    if (!Shared.getHostRuleStatus(rule).isActivable) {
+      return false;
+    }
+
+    const exceptionIds = new Set(rule.exceptions);
+    const isDefaultBlocked =
+      rule.mode === "blacklist"
+        ? !exceptionIds.has(Shared.FIREFOX_DEFAULT_CONTAINER)
+        : exceptionIds.has(Shared.FIREFOX_DEFAULT_CONTAINER);
+    if (!isDefaultBlocked) {
+      return false;
+    }
+
+    const allowedLiveContainerCount = Array.from(liveContainerIds).filter(
+      (cookieStoreId) =>
+        (rule.mode === "blacklist") === exceptionIds.has(cookieStoreId),
+    ).length;
+    return allowedLiveContainerCount >= 2;
+  });
 }
 
 function getStickyHeaderElement() {
@@ -1461,6 +1493,93 @@ function createContainerIntegrityAlert(title, subtitle, items) {
   });
 
   panel.appendChild(list);
+  return panel;
+}
+
+function syncFirefoxExternalLinkWarning() {
+  const panel = document.getElementById("firefox-external-link-warning");
+  if (!panel) {
+    return;
+  }
+
+  panel.hidden = !shouldShowExternalContainerGuessWarning(
+    state.config,
+    state.containers,
+  );
+}
+
+function createFirefoxExternalLinkWarning() {
+  const panel = createPanel(
+    "Firefox may preselect a container for external links",
+    "This notice appears because an active Host Rule blocks Firefox Default while allowing multiple containers.",
+  );
+  panel.id = "firefox-external-link-warning";
+  panel.classList.add("integrity-alert-panel");
+
+  const content = document.createElement("div");
+  content.className = "integrity-alert-list";
+
+  const explanation = createNote(
+    "Firefox has its own container-guessing behavior for links opened from another application. This is a Firefox choice: you can keep its automatic session reuse or prefer predictable Host Rule selection.",
+    "integrity-alert-item",
+  );
+
+  const instructions = document.createElement("p");
+  instructions.className = "integrity-alert-item";
+  instructions.append(
+    "For predictable Host Rules, open ",
+  );
+  const aboutConfig = document.createElement("code");
+  aboutConfig.textContent = "about:config";
+  instructions.append(
+    aboutConfig,
+    " manually, search for ",
+  );
+
+  const preferenceButton = document.createElement("button");
+  preferenceButton.type = "button";
+  preferenceButton.className = "subtle-button firefox-pref-copy-button";
+  preferenceButton.title = "Copy preference name";
+  preferenceButton.setAttribute("aria-label", `Copy ${FIREFOX_EXTERNAL_LINK_CONTAINER_PREF}`);
+  const preferenceCode = document.createElement("code");
+  preferenceCode.textContent = FIREFOX_EXTERNAL_LINK_CONTAINER_PREF;
+  preferenceButton.appendChild(preferenceCode);
+  preferenceButton.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(FIREFOX_EXTERNAL_LINK_CONTAINER_PREF);
+      setStatus("Firefox preference name copied to the clipboard.", false);
+    } catch (_) {
+      setStatus("Could not copy the Firefox preference name.", true);
+    }
+  };
+  instructions.append(preferenceButton, ", then choose the behavior you want:");
+
+  const trueBehavior = document.createElement("p");
+  trueBehavior.className = "integrity-alert-item";
+  const trueValue = document.createElement("code");
+  trueValue.textContent = "true";
+  trueBehavior.append(
+    trueValue,
+    " — recommended for this configuration: ",
+    "External links start in Firefox Default. Privacy Containers can then show its blocked page and let you choose among the allowed containers.",
+  );
+
+  const falseBehavior = document.createElement("p");
+  falseBehavior.className = "integrity-alert-item";
+  const falseValue = document.createElement("code");
+  falseValue.textContent = "false";
+  falseBehavior.append(
+    falseValue,
+    " — Firefox container guessing: ",
+    "Firefox may reuse the container with the most open tabs for the same exact host. If that container is allowed, the Host Rule chooser is not shown.",
+  );
+
+  content.append(explanation, instructions, trueBehavior, falseBehavior);
+  panel.appendChild(content);
+  panel.hidden = !shouldShowExternalContainerGuessWarning(
+    state.config,
+    state.containers,
+  );
   return panel;
 }
 
@@ -4835,6 +4954,7 @@ function createHostRuleCard(
     draft = Shared.clone(nextRule);
     state.config.hostRules[targetIndex] = nextRule;
     scheduleConfigSave(delay, message || "Host Rule saved.");
+    syncFirefoxExternalLinkWarning();
     syncCardState();
     return true;
   }
@@ -4963,6 +5083,8 @@ function renderHostRulesTab(root, containerIntegrity) {
   const containerChoiceById = new Map(
     containerChoices.map((entry) => [entry.cookieStoreId, entry]),
   );
+
+  root.appendChild(createFirefoxExternalLinkWarning());
 
   root.appendChild(
     createNote(
@@ -5221,6 +5343,7 @@ if (typeof module !== "undefined" && module.exports) {
     buildTabSummaries,
     getHeaderPrimaryActionDescriptor,
     getInternalShortcutConflictIssue,
+    shouldShowExternalContainerGuessWarning,
   };
 } else {
   main().catch((error) => {
