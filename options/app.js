@@ -3495,7 +3495,7 @@ function appendContainerShortcutControls(slotEntry, group, root) {
     createShortcutEntry(
       "Reopen current tab on this container",
       Shared.getReopenContainerSlotCommandName(slotEntry.slot),
-      "Reopens the current web page URL in this container and closes the original tab.",
+      "Reopens web pages and blank tabs in this container. Other URLs stay in Firefox's default container.",
     ),
   );
 }

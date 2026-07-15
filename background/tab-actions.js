@@ -1,5 +1,25 @@
+import { showTransientNotification } from "./notifications.js";
+
 export function createTabActions(deps) {
     const { browser, Shared } = deps;
+    const DEFAULT_CONTAINER_NOTIFICATION_DURATION_MS = 6000;
+
+    function isBlankTabUrl(url) {
+      return url === "about:newtab" || url === "about:blank";
+    }
+
+    async function showDefaultContainerNotification() {
+      try {
+        await showTransientNotification(browser, {
+          idPrefix: "default-container-required",
+          durationMs: DEFAULT_CONTAINER_NOTIFICATION_DURATION_MS,
+          title: "Default container required",
+          message: "This URL can only be opened in Firefox's default container.",
+        });
+      } catch (_) {
+        // The tab action must not fail just because its informational notice did.
+      }
+    }
 
     async function getCurrentBrowserTab() {
       const [tab] = await browser.tabs.query({
@@ -56,14 +76,18 @@ export function createTabActions(deps) {
       };
     }
 
-    async function openTabInContainerFromReferenceTab(cookieStoreId, activeTab) {
+    async function openTabInContainerFromReferenceTab(
+      cookieStoreId,
+      activeTab,
+      overrides = {},
+    ) {
       const validation = getTabPlacementValidation(activeTab);
       if (!validation.valid) {
         throw new Error(validation.reason);
       }
 
-      await browser.tabs.create(
-        withContainer(buildTabCreateProperties(activeTab, {}), cookieStoreId),
+      return browser.tabs.create(
+        withContainer(buildTabCreateProperties(activeTab, overrides), cookieStoreId),
       );
     }
 
@@ -92,15 +116,36 @@ export function createTabActions(deps) {
         throw new Error(validation.reason);
       }
 
-      await browser.tabs.create(
-        withContainer(
-          buildTabCreateProperties(activeTab, {
-            url: activeTab.url,
-            pinned: Boolean(activeTab.pinned),
-          }),
-          cookieStoreId,
-        ),
-      );
+      const pinned = Boolean(activeTab.pinned);
+      if (Shared.canReopenTabUrl(activeTab.url)) {
+        await openTabInContainerFromReferenceTab(cookieStoreId, activeTab, {
+          pinned,
+          url: activeTab.url,
+        });
+      } else if (isBlankTabUrl(activeTab.url)) {
+        await openTabInContainerFromReferenceTab(cookieStoreId, activeTab, {
+          pinned,
+        });
+      } else {
+        await showDefaultContainerNotification();
+        if (
+          Shared.getEffectiveCookieStoreId(activeTab.cookieStoreId) ===
+          Shared.FIREFOX_DEFAULT_CONTAINER
+        ) {
+          return false;
+        }
+
+        try {
+          await openTabInContainerFromReferenceTab(
+            Shared.FIREFOX_DEFAULT_CONTAINER,
+            activeTab,
+            { pinned, url: activeTab.url },
+          );
+        } catch (_) {
+          return false;
+        }
+      }
+
       await browser.tabs.remove(activeTab.id);
       return true;
     }

@@ -1,3 +1,5 @@
+import { showTransientNotification } from "./notifications.js";
+
 export function createBlockedPageStore(deps) {
     const {
       state,
@@ -47,35 +49,16 @@ export function createBlockedPageStore(deps) {
     }
 
     async function showAutoReopenNotification(decision, cookieStoreId) {
-      if (
-        !browser.notifications ||
-        typeof browser.notifications.create !== "function"
-      ) {
-        return;
-      }
-
       const container = containerCache.getContainerDescriptor(cookieStoreId);
       const containerName = container?.name || "the allowed container";
       const ruleName = decision?.ruleName || "this Host Rule";
-      const notificationId = `auto-reopen-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
 
-      await browser.notifications.create(notificationId, {
-        type: "basic",
-        iconUrl: browser.runtime.getURL("res/icon.png"),
+      await showTransientNotification(browser, {
+        idPrefix: "auto-reopen",
+        durationMs: AUTO_REOPEN_NOTIFICATION_DURATION_MS,
         title: `Link reopened in ${containerName}`,
         message: `Privacy Containers automatically reopened this link in "${containerName}" because the Host Rule "${ruleName}" only allows this host in that container.`,
       });
-
-      if (typeof browser.notifications.clear === "function") {
-        const clearTimer = setTimeout(() => {
-          browser.notifications.clear(notificationId).catch(() => undefined);
-        }, AUTO_REOPEN_NOTIFICATION_DURATION_MS);
-        if (typeof clearTimer?.unref === "function") {
-          clearTimer.unref();
-        }
-      }
     }
 
     function getStoredEntriesValue(payload) {

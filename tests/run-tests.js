@@ -82,6 +82,39 @@ function createTabActionsBrowser(tabs) {
   };
 }
 
+function createReopenBrowser(activeTab, options = {}) {
+  return {
+    notifications: {
+      created: [],
+      async create(notificationId, details) {
+        this.created.push({ notificationId, details });
+      },
+    },
+    runtime: {
+      getURL(pathname) {
+        return `moz-extension://test/${pathname}`;
+      },
+    },
+    tabs: {
+      created: [],
+      removed: [],
+      async create(details) {
+        this.created.push(details);
+        if (options.createError) {
+          throw options.createError;
+        }
+        return { id: 22, ...details };
+      },
+      async query() {
+        return [activeTab];
+      },
+      async remove(tabId) {
+        this.removed.push(tabId);
+      },
+    },
+  };
+}
+
 test("declares a Firefox Manifest V3 event page without widening host access", () => {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8"),
@@ -1695,6 +1728,115 @@ test("reopens the current tab in another container from the queried active tab",
     },
   ]);
   assert.deepStrictEqual(browser.tabs.removed, [11]);
+});
+
+test("reopens blank tabs in the requested container without a URL", async () => {
+  const activeTab = {
+    id: 12,
+    active: true,
+    cookieStoreId: Shared.FIREFOX_DEFAULT_CONTAINER,
+    index: 1,
+    pinned: false,
+    url: "about:newtab",
+    windowId: 2,
+  };
+  const browser = createReopenBrowser(activeTab);
+  const tabActions = createTabActions({ Shared, browser });
+
+  await tabActions.reopenCurrentTabInContainer("firefox-container-9");
+
+  assert.deepStrictEqual(browser.tabs.created, [
+    {
+      active: true,
+      cookieStoreId: "firefox-container-9",
+      index: 2,
+      pinned: false,
+      windowId: 2,
+    },
+  ]);
+  assert.deepStrictEqual(browser.tabs.removed, [12]);
+  assert.deepStrictEqual(browser.notifications.created, []);
+
+  activeTab.url = "about:blank";
+  browser.tabs.created.length = 0;
+  browser.tabs.removed.length = 0;
+
+  await tabActions.reopenCurrentTabInContainer("firefox-container-9");
+
+  assert.strictEqual(browser.tabs.created.length, 1);
+  assert.strictEqual("url" in browser.tabs.created[0], false);
+  assert.deepStrictEqual(browser.tabs.removed, [12]);
+});
+
+test("reopens other special URLs in the default container with a notice", async () => {
+  const activeTab = {
+    id: 13,
+    active: true,
+    cookieStoreId: "firefox-container-9",
+    index: 2,
+    pinned: true,
+    url: "about:debugging#/runtime/this-firefox",
+    windowId: 3,
+  };
+  const browser = createReopenBrowser(activeTab);
+  const tabActions = createTabActions({ Shared, browser });
+
+  assert.strictEqual(
+    await tabActions.reopenCurrentTabInContainer("firefox-container-1"),
+    true,
+  );
+
+  assert.deepStrictEqual(browser.tabs.created, [
+    {
+      active: true,
+      index: 3,
+      pinned: true,
+      url: "about:debugging#/runtime/this-firefox",
+      windowId: 3,
+    },
+  ]);
+  assert.deepStrictEqual(browser.tabs.removed, [13]);
+  assert.strictEqual(browser.notifications.created.length, 1);
+  assert.deepStrictEqual(browser.notifications.created[0].details, {
+    type: "basic",
+    iconUrl: "moz-extension://test/res/icon.png",
+    title: "Default container required",
+    message: "This URL can only be opened in Firefox's default container.",
+  });
+});
+
+test("leaves special URLs untouched when they cannot be moved to default", async () => {
+  const activeTab = {
+    id: 14,
+    active: true,
+    cookieStoreId: Shared.FIREFOX_DEFAULT_CONTAINER,
+    index: 3,
+    pinned: false,
+    url: "file:///tmp/example.txt",
+    windowId: 4,
+  };
+  const browser = createReopenBrowser(activeTab);
+  const tabActions = createTabActions({ Shared, browser });
+
+  assert.strictEqual(
+    await tabActions.reopenCurrentTabInContainer("firefox-container-1"),
+    false,
+  );
+  assert.deepStrictEqual(browser.tabs.created, []);
+  assert.deepStrictEqual(browser.tabs.removed, []);
+  assert.strictEqual(browser.notifications.created.length, 1);
+
+  activeTab.cookieStoreId = "firefox-container-9";
+  browser.tabs.create = async () => {
+    throw new Error("Illegal URL");
+  };
+
+  assert.strictEqual(
+    await tabActions.reopenCurrentTabInContainer("firefox-container-1"),
+    false,
+  );
+  assert.deepStrictEqual(browser.tabs.removed, []);
+  assert.strictEqual(browser.notifications.created.length, 2);
 });
 
 testCases([
