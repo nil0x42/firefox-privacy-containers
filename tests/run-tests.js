@@ -931,10 +931,11 @@ test("merges request headers with a small compiled header plan", () => {
   ]);
 });
 
-test("maps supported PwnFox colors", () => {
+test("maps Firefox container colors to PwnFox header values", () => {
   assert.strictEqual(Shared.getPwnFoxColorValue("turquoise"), "cyan");
   assert.strictEqual(Shared.getPwnFoxColorValue("purple"), "magenta");
-  assert.strictEqual(Shared.getPwnFoxColorValue("toolbar"), "");
+  assert.strictEqual(Shared.getPwnFoxColorValue("pink"), "pink");
+  assert.strictEqual(Shared.getPwnFoxColorValue("toolbar"), "toolbar");
 });
 
 test("derives slot metadata from live container order", () => {
@@ -3481,7 +3482,7 @@ test("compiles runtime state for proxies, headers and PwnFox", () => {
       {
         cookieStoreId: "firefox-container-1",
         name: "Work",
-        color: "turquoise",
+        color: "toolbar",
         icon: "briefcase",
       },
     ],
@@ -3524,7 +3525,7 @@ test("compiles runtime state for proxies, headers and PwnFox", () => {
   assert.deepStrictEqual(
     runtime.headerRuntime.planByContainerId["firefox-container-1"].headers,
     [
-      { name: "X-PwnFox-Color", value: "cyan" },
+      { name: "X-PwnFox-Color", value: "toolbar" },
       { id: "g1", name: "X-Global", value: "1" },
       { id: "c1", name: "X-Scoped", value: "2" },
     ],

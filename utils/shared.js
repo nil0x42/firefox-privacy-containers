@@ -43,6 +43,7 @@
     red: "red",
     pink: "pink",
     purple: "magenta",
+    toolbar: "toolbar",
   };
   const CONTEXTUAL_ICONS = [
     "fingerprint",
