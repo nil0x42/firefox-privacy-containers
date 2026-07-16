@@ -796,6 +796,8 @@ function getProxyTypeLabel(type) {
       return "SOCKS5";
     case "socks4":
       return "SOCKS4";
+    case "socks4a":
+      return "SOCKS4a";
     default:
       return "Proxy";
   }
@@ -2471,7 +2473,6 @@ async function createProxyAndFocus(options) {
     port: 8080,
     username: "",
     password: "",
-    proxyDNS: false,
     doNotProxyLocal: true,
     bypass: Shared.createDefaultProxyBypass(),
   });
@@ -4040,12 +4041,10 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
   main.appendChild(titleRow);
   header.appendChild(main);
   const typeSelect = createSelect(
-    [
-      { value: "http", label: "HTTP" },
-      { value: "https", label: "HTTPS" },
-      { value: "socks", label: "SOCKS5" },
-      { value: "socks4", label: "SOCKS4" },
-    ],
+    Shared.PROXY_TYPES.map((type) => ({
+      value: type,
+      label: getProxyTypeLabel(type),
+    })),
     draft.type,
   );
   const hostInput = createInput(draft.host, "127.0.0.1");
@@ -4151,7 +4150,7 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
     createCompactInlineField(
       "Type",
       typeSelect,
-      "HTTP and HTTPS proxies support credentials. SOCKS5 supports Proxy DNS.",
+      "HTTP and HTTPS proxies support credentials. SOCKS proxies support remote DNS.",
     ),
   );
   mainColumn.appendChild(
@@ -4191,7 +4190,7 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
   const proxyDnsToggle = createToggleOption(
     "Proxy DNS",
     proxyDnsInput,
-    "When enabled on SOCKS5, DNS lookups are sent through the proxy.",
+    "SOCKS4 resolves locally, SOCKS4a resolves through the proxy, and SOCKS5 lets you choose.",
   );
   proxyDnsToggle.classList.add("proxy-compact-toggle");
   toggleList.appendChild(proxyDnsToggle);
@@ -4255,10 +4254,10 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
   }
 
   function syncProxyFields(previousType) {
-    const isSocks = Shared.isSocksProxyType(typeSelect.value);
-    const isSocks4 = typeSelect.value === "socks4";
-    const switchedToSocks5 =
-      typeSelect.value === "socks" && !Shared.isSocksProxyType(previousType);
+    const type = typeSelect.value;
+    const isSocks = Shared.isSocksProxyType(type);
+    const proxyTypePolicy = Shared.getProxyTypePolicy(type);
+    const typeChanged = type !== previousType;
 
     if (isSocks) {
       draft.username = "";
@@ -4267,18 +4266,12 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
       passwordInput.value = "";
     }
 
-    if (isSocks4) {
-      draft.proxyDNS = false;
-      proxyDnsInput.checked = false;
-    } else if (switchedToSocks5) {
-      draft.proxyDNS = true;
-      proxyDnsInput.checked = true;
-    } else if (typeSelect.value !== "socks") {
-      draft.proxyDNS = false;
-      proxyDnsInput.checked = false;
+    if (typeChanged || !proxyTypePolicy.preserveProxyDNS) {
+      draft.proxyDNS = proxyTypePolicy.defaultValue;
     }
 
-    proxyDnsInput.disabled = typeSelect.value !== "socks";
+    proxyDnsInput.checked = draft.proxyDNS;
+    proxyDnsInput.disabled = !proxyTypePolicy.editable;
     usernameInput.disabled = isSocks;
     passwordInput.disabled = isSocks;
     passwordField.setDisabled(isSocks);
@@ -4354,6 +4347,15 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
   };
   proxyDnsInput.onchange = () => {
     draft.proxyDNS = proxyDnsInput.checked;
+    const nextType = Shared.getProxyTypeForDNSChoice(
+      draft.type,
+      draft.proxyDNS,
+    );
+    if (nextType !== draft.type) {
+      draft.type = nextType;
+      typeSelect.value = nextType;
+      syncProxyFields(nextType);
+    }
     applyDraft(0);
   };
   localBypassInput.onchange = () => {

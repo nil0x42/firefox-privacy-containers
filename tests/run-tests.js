@@ -385,20 +385,108 @@ test("normalizes proxies with socks DNS enabled by default", () => {
   });
 });
 
-test("forces socks4 proxyDNS off and clears auth fields", () => {
-  const proxy = Shared.normalizeProxy({
-    id: "proxy-1",
-    type: "socks4",
-    host: "127.0.0.1",
-    port: "1080",
-    proxyDNS: true,
-    username: "user",
-    password: "secret",
-  });
+test("centralizes proxy DNS behavior for every proxy type", () => {
+  const cases = [
+    ["http", true, false, "http"],
+    ["https", true, false, "https"],
+    ["socks", true, true, "socks"],
+    ["socks4", false, true, "socks4"],
+    ["socks4a", true, true, "socks4"],
+  ];
 
-  assert.strictEqual(proxy.proxyDNS, false);
-  assert.strictEqual(proxy.username, "");
-  assert.strictEqual(proxy.password, "");
+  for (const [type, defaultValue, editable, firefoxType] of cases) {
+    const policy = Shared.getProxyTypePolicy(type);
+    assert.strictEqual(policy.defaultValue, defaultValue);
+    assert.strictEqual(policy.editable, editable);
+    assert.strictEqual(policy.firefoxType, firefoxType);
+  }
+});
+
+test("normalizes fixed proxy DNS values and preserves the SOCKS5 choice", () => {
+  const cases = [
+    { type: "http", proxyDNS: false, expected: true },
+    { type: "https", proxyDNS: false, expected: true },
+    { type: "socks4", proxyDNS: true, expected: false },
+    { type: "socks4a", proxyDNS: false, expected: true },
+    { type: "socks", proxyDNS: false, expected: false },
+  ];
+
+  for (const scenario of cases) {
+    const proxy = Shared.normalizeProxy({
+      id: `proxy-${scenario.type}`,
+      type: scenario.type,
+      host: "127.0.0.1",
+      port: "1080",
+      proxyDNS: scenario.proxyDNS,
+      username: "user",
+      password: "secret",
+    });
+
+    assert.strictEqual(proxy.proxyDNS, scenario.expected);
+    if (Shared.isSocksProxyType(scenario.type)) {
+      assert.strictEqual(proxy.username, "");
+      assert.strictEqual(proxy.password, "");
+    }
+  }
+});
+
+test("maps SOCKS4 DNS choices to the matching UI type", () => {
+  assert.strictEqual(
+    Shared.getProxyTypeForDNSChoice("socks4", true),
+    "socks4a",
+  );
+  assert.strictEqual(
+    Shared.getProxyTypeForDNSChoice("socks4a", false),
+    "socks4",
+  );
+  assert.strictEqual(
+    Shared.getProxyTypeForDNSChoice("socks", false),
+    "socks",
+  );
+});
+
+test("adapts internal proxy types to Firefox request info", () => {
+  const cases = [
+    ["http", false, "http", undefined],
+    ["https", false, "https", undefined],
+    ["socks4", true, "socks4", false],
+    ["socks4a", false, "socks4", true],
+    ["socks", false, "socks", false],
+  ];
+
+  for (const [type, proxyDNS, firefoxType, firefoxProxyDNS] of cases) {
+    const proxy = Shared.normalizeProxy({
+      id: `proxy-${type}`,
+      type,
+      host: "127.0.0.1",
+      port: "1080",
+      proxyDNS,
+    });
+    const expected = {
+      type: firefoxType,
+      host: "127.0.0.1",
+      port: 1080,
+    };
+    if (firefoxProxyDNS !== undefined) {
+      expected.proxyDNS = firefoxProxyDNS;
+    }
+    assert.deepStrictEqual(Shared.asProxyRequestInfo(proxy), expected);
+  }
+
+  assert.deepStrictEqual(
+    Shared.asProxyRequestInfo({
+      type: "socks4a",
+      host: "127.0.0.1",
+      port: 1080,
+      proxyDNS: false,
+    }),
+    {
+      type: "socks4",
+      host: "127.0.0.1",
+      port: 1080,
+      proxyDNS: true,
+    },
+  );
 });
 
 test("validates proxy settings and duplicate ids", () => {
@@ -1213,6 +1301,7 @@ test("supports proxy auth only for http and https proxies", () => {
   assert.strictEqual(Shared.supportsProxyAuth({ type: "https" }), true);
   assert.strictEqual(Shared.supportsProxyAuth({ type: "socks" }), false);
   assert.strictEqual(Shared.supportsProxyAuth({ type: "socks4" }), false);
+  assert.strictEqual(Shared.supportsProxyAuth({ type: "socks4a" }), false);
 });
 
 test("migrates legacy bypass settings onto each proxy", () => {

@@ -23,7 +23,51 @@
     "ws://*/*",
     "wss://*/*",
   ];
-  const PROXY_TYPES = ["http", "https", "socks", "socks4"];
+  const PROXY_TYPE_POLICIES = Object.freeze({
+    http: Object.freeze({
+      defaultValue: true,
+      editable: false,
+      preserveProxyDNS: false,
+      firefoxType: "http",
+      socksFamily: false,
+    }),
+    https: Object.freeze({
+      defaultValue: true,
+      editable: false,
+      preserveProxyDNS: false,
+      firefoxType: "https",
+      socksFamily: false,
+    }),
+    socks: Object.freeze({
+      defaultValue: true,
+      editable: true,
+      preserveProxyDNS: true,
+      firefoxType: "socks",
+      socksFamily: true,
+    }),
+    socks4: Object.freeze({
+      defaultValue: false,
+      editable: true,
+      preserveProxyDNS: false,
+      firefoxType: "socks4",
+      socksFamily: true,
+    }),
+    socks4a: Object.freeze({
+      defaultValue: true,
+      editable: true,
+      preserveProxyDNS: false,
+      firefoxType: "socks4",
+      socksFamily: true,
+    }),
+  });
+  const INVALID_PROXY_TYPE_POLICY = Object.freeze({
+    defaultValue: false,
+    editable: false,
+    preserveProxyDNS: false,
+    firefoxType: "",
+    socksFamily: false,
+  });
+  const PROXY_TYPES = Object.freeze(Object.keys(PROXY_TYPE_POLICIES));
   const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
   const BLOCKED_REOPEN_PREFIXES = [
     "about:",
@@ -451,6 +495,27 @@
     return PROXY_TYPES.includes(type) ? type : "";
   }
 
+  function getProxyTypePolicy(value) {
+    const type = normalizeProxyType(value);
+    return PROXY_TYPE_POLICIES[type] || INVALID_PROXY_TYPE_POLICY;
+  }
+
+  function normalizeProxyDNS(type, value) {
+    const policy = getProxyTypePolicy(type);
+    return policy.preserveProxyDNS
+      ? normalizeBoolean(value, policy.defaultValue)
+      : policy.defaultValue;
+  }
+
+  function getProxyTypeForDNSChoice(value, proxyDNS) {
+    const type = normalizeProxyType(value);
+    if (type === "socks4" || type === "socks4a") {
+      return proxyDNS ? "socks4a" : "socks4";
+    }
+
+    return type;
+  }
+
   function normalizeProxyId(value) {
     const proxyId = normalizeText(value);
     return proxyId === "direct" ? "" : proxyId;
@@ -461,11 +526,7 @@
   }
 
   function isSocksProxyType(type) {
-    return type === "socks" || type === "socks4";
-  }
-
-  function defaultProxyDNS(type) {
-    return type === "socks";
+    return getProxyTypePolicy(type).socksFamily;
   }
 
   function createProxyId() {
@@ -476,7 +537,6 @@
     const type = normalizeProxyType(proxy && proxy.type);
     const id = normalizeText(proxy && proxy.id) || fallbackId || createProxyId();
     const isSocks = isSocksProxyType(type);
-    const isSocks4 = type === "socks4";
 
     return {
       id,
@@ -486,9 +546,7 @@
       port: normalizePort(proxy && proxy.port),
       username: isSocks ? "" : normalizeText(proxy && proxy.username),
       password: isSocks ? "" : normalizeText(proxy && proxy.password),
-      proxyDNS: isSocks4
-        ? false
-        : normalizeBoolean(proxy && proxy.proxyDNS, defaultProxyDNS(type)),
+      proxyDNS: normalizeProxyDNS(type, proxy && proxy.proxyDNS),
       doNotProxyLocal: normalizeBoolean(proxy && proxy.doNotProxyLocal, true),
       bypass: normalizeProxyBypass(proxy && proxy.bypass, proxy && proxy.legacyBypass),
     };
@@ -1114,14 +1172,16 @@
       return null;
     }
 
+    const proxyTypePolicy = getProxyTypePolicy(proxy.type);
+
     const result = {
-      type: proxy.type,
+      type: proxyTypePolicy.firefoxType,
       host: proxy.host,
       port: proxy.port,
     };
 
-    if (isSocksProxyType(proxy.type)) {
-      result.proxyDNS = normalizeBoolean(proxy.proxyDNS, true);
+    if (proxyTypePolicy.socksFamily) {
+      result.proxyDNS = normalizeProxyDNS(proxy.type, proxy.proxyDNS);
     }
 
     return result;
@@ -2765,6 +2825,8 @@
     getProxyById,
     getProxyBypass,
     getProxyDisplayName,
+    getProxyTypeForDNSChoice,
+    getProxyTypePolicy,
     getProxyStatus,
     getPwnFoxColorValue,
     getRandomContainerIcon,

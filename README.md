@@ -12,9 +12,10 @@ No more wondering which tab is using which route.
 ## One browser, clearly separated contexts
 
 Create or reuse Firefox containers, then give each one the behaviour it needs.
-A container can take a direct route or use a reusable HTTP, HTTPS, SOCKS5, or
-SOCKS4 proxy. Add its own request headers, give it a distinct PwnFox color when
-needed, and keep the setup available from a single configuration page.
+A container can take a direct route or use a reusable HTTP, HTTPS, SOCKS5,
+SOCKS4, or SOCKS4a proxy. Add its own request headers, give it a distinct
+PwnFox color when needed, and keep the setup available from a single
+configuration page.
 
 ```
 Container  →  Proxy route  →  Request headers  →  Host rules
@@ -26,8 +27,9 @@ testing, multi-account workflows, local development, and proxy-based analysis.
 ## Built for the testing flow
 
 **Route with intent.** Define a proxy once and assign it to any container.
-SOCKS5 remote DNS, HTTP/HTTPS proxy authentication, localhost bypasses, and
-per-proxy exceptions are there when a real environment needs them.
+SOCKS4a/SOCKS5 remote DNS, HTTP/HTTPS proxy authentication, localhost
+bypasses, and per-proxy exceptions are there when a real environment needs
+them.
 
 **Make each request identifiable.** Add custome headers globally or per container.
 Enable the PwnFox-compatible `X-PwnFox-Color` header to keep your traffic easy
