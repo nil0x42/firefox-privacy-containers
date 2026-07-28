@@ -1,6 +1,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const Shared = require("../utils/shared.js");
+const ConfigTransfer = require("../options/config-transfer.js");
 const path = require("path");
 let createBackgroundApp;
 let createShortcutManager;
@@ -64,6 +65,39 @@ function testCases(cases, runCase) {
   }
 }
 
+async function withMockBrowser(mock, task) {
+  const previousBrowser = global.browser;
+  global.browser = mock;
+  try {
+    return await task();
+  } finally {
+    global.browser = previousBrowser;
+  }
+}
+
+function createLocalStorageMock(initial = {}) {
+  const values = { ...initial };
+  return {
+    values,
+    async get(key) {
+      return { [key]: values[key] };
+    },
+    async set(entries) {
+      Object.assign(values, entries);
+    },
+    async remove(key) {
+      delete values[key];
+    },
+  };
+}
+
+function loadOptionsAppTestModule() {
+  global.PrivacyContainersShared = Shared;
+  global.PrivacyContainersConfigTransfer = ConfigTransfer;
+  delete require.cache[require.resolve("../options/app.js")];
+  return require("../options/app.js");
+}
+
 function createTabActionsBrowser(tabs) {
   return {
     tabs: {
@@ -115,6 +149,71 @@ function createReopenBrowser(activeTab, options = {}) {
   };
 }
 
+function createTransferFixture() {
+  const containers = [
+    {
+      cookieStoreId: "firefox-container-1",
+      name: "Work",
+      color: "blue",
+      icon: "briefcase",
+    },
+    {
+      cookieStoreId: "firefox-container-2",
+      name: "Personal",
+      color: "green",
+      icon: "fingerprint",
+    },
+  ];
+  const commands = [
+    { name: "open-container-1", shortcut: "Ctrl+1" },
+    { name: "open-container-2", shortcut: "" },
+  ];
+  const config = Shared.normalizeConfig({
+    proxies: [
+      {
+        id: "proxy-1",
+        title: "Lab",
+        type: "https",
+        host: "proxy.example",
+        port: 8443,
+        username: "analyst",
+        password: "secret",
+      },
+    ],
+    containerSettings: {
+      "firefox-container-1": { proxyId: "proxy-1" },
+      [Shared.FIREFOX_DEFAULT_CONTAINER]: {
+        headers: [{ name: "X-Default", value: "yes" }],
+      },
+    },
+    hostRules: [
+      {
+        id: "host-rule-1",
+        name: "Work only",
+        enabled: true,
+        mode: "whitelist",
+        patterns: ["example.com"],
+        exceptions: ["firefox-container-1"],
+      },
+    ],
+    globalHeaders: [{ name: "X-Global", value: "yes" }],
+    ui: { activeTab: "proxies" },
+  });
+
+  return {
+    commands,
+    config,
+    containers,
+    document: ConfigTransfer.createExportDocument(
+      config,
+      containers,
+      commands,
+      "2026-07-25T10:00:00.000Z",
+      { sourceInstanceId: "instance-a", sourcePlatform: "linux" },
+    ),
+  };
+}
+
 test("declares a Firefox Manifest V3 event page without widening host access", () => {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8"),
@@ -153,6 +252,18 @@ test("avoids unsupported contextual identity APIs and HTML icon injection", () =
     assert.ok(source.includes('parseFromString(svgMarkup, "text/html")'));
     assert.ok(source.includes('namespaceURI !== "http://www.w3.org/2000/svg"'));
   }
+});
+
+test("wires compact configuration transfer controls without duplicating UI pages", () => {
+  const html = fs.readFileSync(
+    path.join(__dirname, "..", "options", "app.html"),
+    "utf8",
+  );
+
+  assert.ok(html.includes('id="config-transfer-actions"'));
+  assert.ok(html.includes('id="config-import-input"'));
+  assert.ok(html.includes('id="config-transfer-dialog"'));
+  assert.ok(html.indexOf('src="config-transfer.js"') < html.indexOf('src="app.js"'));
 });
 
 test("keeps options color literals centralized in the root palette", () => {
@@ -1376,6 +1487,576 @@ test("normalizes config bundles and legacy config payloads", () => {
   assert.strictEqual(fromBundle.meta.revision, 3);
   assert.strictEqual(fromBundle.meta.writer, "test");
   assert.strictEqual(fromBundle.config.proxies[0].id, "proxy-2");
+});
+
+test("exports a versioned portable configuration including secrets and shortcuts", () => {
+  const fixture = createTransferFixture();
+
+  assert.strictEqual(fixture.document.kind, ConfigTransfer.FORMAT_KIND);
+  assert.strictEqual(fixture.document.formatVersion, ConfigTransfer.FORMAT_VERSION);
+  assert.strictEqual(fixture.document.exportedAt, "2026-07-25T10:00:00.000Z");
+  assert.strictEqual(fixture.document.sourceInstanceId, "instance-a");
+  assert.strictEqual(fixture.document.sourcePlatform, "linux");
+  assert.deepStrictEqual(fixture.document.containers[0], {
+    sourceCookieStoreId: "firefox-container-1",
+    name: "Work",
+    color: "blue",
+    icon: "briefcase",
+  });
+  assert.strictEqual(fixture.document.config.proxies[0].password, "secret");
+  assert.deepStrictEqual(fixture.document.shortcuts, {
+    "open-container-1": "Ctrl+1",
+    "open-container-2": "",
+  });
+  assert.strictEqual(fixture.document.meta, undefined);
+});
+
+test("validates imported configuration envelopes and container references", () => {
+  const fixture = createTransferFixture();
+  const options = {
+    supportedColors: ["blue", "green"],
+    supportedIcons: ["briefcase", "fingerprint"],
+    commandNames: fixture.commands.map((command) => command.name),
+  };
+  const parsed = ConfigTransfer.parseImportText(
+    JSON.stringify(fixture.document),
+    options,
+  );
+
+  assert.deepStrictEqual(parsed, fixture.document);
+  assert.throws(
+    () => ConfigTransfer.parseImportText("not json", options),
+    /not valid JSON/,
+  );
+  assert.throws(
+    () =>
+      ConfigTransfer.parseImportDocument(
+        { ...fixture.document, formatVersion: ConfigTransfer.FORMAT_VERSION + 1 },
+        options,
+      ),
+    /newer add-on version/,
+  );
+  assert.throws(
+    () => ConfigTransfer.parseImportDocument({ ...fixture.document, config: null }, options),
+    /configuration is invalid/,
+  );
+  assert.throws(
+    () =>
+      ConfigTransfer.parseImportDocument(
+        {
+          ...fixture.document,
+          config: { ...fixture.document.config, proxies: "invalid" },
+        },
+        options,
+      ),
+    /proxies list is invalid/,
+  );
+
+  const unknownReference = Shared.clone(fixture.document);
+  unknownReference.config.containerSettings["firefox-container-99"] = {
+    proxyId: "proxy-1",
+  };
+  assert.throws(
+    () => ConfigTransfer.parseImportDocument(unknownReference, options),
+    /unknown container/,
+  );
+});
+
+test("matches imported containers by ordered visible identity rather than local IDs", () => {
+  const fixture = createTransferFixture();
+  const sameAppearance = fixture.containers.map((container, index) => ({
+    ...container,
+    cookieStoreId: `firefox-container-${index + 20}`,
+  }));
+
+  assert.strictEqual(
+    ConfigTransfer.analyzeContainerMatch(
+      fixture.document.containers,
+      sameAppearance,
+    ).mode,
+    "exact",
+  );
+  assert.strictEqual(
+    ConfigTransfer.analyzeContainerMatch(fixture.document.containers, []).mode,
+    "empty",
+  );
+  assert.deepStrictEqual(
+    ConfigTransfer.analyzeContainerMatch(
+      fixture.document.containers,
+      [...sameAppearance].reverse(),
+    ),
+    { mode: "mismatch", differences: ["different order"] },
+  );
+  assert.strictEqual(
+    ConfigTransfer.analyzeContainerMatch(fixture.document.containers, [
+      { ...sameAppearance[0], name: "Renamed" },
+    ]).mode,
+    "mismatch",
+  );
+});
+
+test("recognizes changed containers from the same Firefox profile by stable IDs", () => {
+  const fixture = createTransferFixture();
+  const changed = [
+    { ...fixture.containers[1], name: "Private", color: "purple" },
+    { ...fixture.containers[0], icon: "circle" },
+  ];
+  const match = ConfigTransfer.analyzeContainerMatch(
+    fixture.document.containers,
+    changed,
+    "instance-a",
+    "instance-a",
+  );
+
+  assert.strictEqual(match.mode, "same-profile");
+  assert.deepStrictEqual(
+    ConfigTransfer.createSameProfileIdMap(
+      fixture.document.containers,
+      changed,
+    ),
+    new Map([
+      ["firefox-container-1", "firefox-container-1"],
+      ["firefox-container-2", "firefox-container-2"],
+    ]),
+  );
+  assert.strictEqual(
+    ConfigTransfer.analyzeContainerMatch(
+      fixture.document.containers,
+      changed,
+      "instance-a",
+      "instance-b",
+    ).mode,
+    "mismatch",
+  );
+});
+
+test("warns about export secrets only when proxy credentials are present", () => {
+  const fixture = createTransferFixture();
+  const withoutCredentials = Shared.clone(fixture.config);
+  withoutCredentials.proxies[0].username = "";
+  withoutCredentials.proxies[0].password = "";
+
+  assert.strictEqual(ConfigTransfer.hasProxyCredentials(fixture.config), true);
+  assert.strictEqual(
+    ConfigTransfer.hasProxyCredentials(withoutCredentials),
+    false,
+  );
+});
+
+test("detects only shortcut modifiers incompatible with the target OS", () => {
+  const shortcuts = {
+    "open-container-1": "Command+Shift+1",
+    "open-container-2": "Ctrl+2",
+    "open-container-3": "MacCtrl+3",
+  };
+
+  assert.deepStrictEqual(
+    ConfigTransfer.getIncompatibleShortcutNames(shortcuts, "mac", "linux"),
+    ["open-container-1", "open-container-3"],
+  );
+  assert.deepStrictEqual(
+    ConfigTransfer.getIncompatibleShortcutNames(shortcuts, "mac", "mac"),
+    [],
+  );
+  assert.deepStrictEqual(
+    ConfigTransfer.getIncompatibleShortcutNames(shortcuts, "linux", "mac"),
+    [],
+  );
+  assert.strictEqual(
+    ConfigTransfer.shortcutsMatch("Ctrl+Shift+A", "Command+Shift+A", "mac"),
+    true,
+  );
+  assert.strictEqual(
+    ConfigTransfer.shortcutsMatch("Ctrl+Shift+A", "Command+Shift+A", "linux"),
+    false,
+  );
+});
+
+test("chooses only recovery actions proven safe by the imported revision", () => {
+  const transaction = {
+    version: ConfigTransfer.TRANSACTION_VERSION,
+    phase: "commit-pending",
+    writerId: "writer-a",
+    initialRevision: 4,
+    targetRevision: 5,
+    remainingOldContainers: [{ cookieStoreId: "old-1" }],
+  };
+  const importedBundle = { meta: { writer: "writer-a", revision: 5 } };
+
+  assert.strictEqual(
+    ConfigTransfer.getRecoveryAction(transaction, importedBundle),
+    "cleanup",
+  );
+  assert.strictEqual(
+    ConfigTransfer.getRecoveryAction(
+      transaction,
+      { meta: { writer: "writer-b", revision: 4 } },
+    ),
+    "rollback",
+  );
+  assert.strictEqual(
+    ConfigTransfer.getRecoveryAction(
+      transaction,
+      { meta: { writer: "writer-b", revision: 6 } },
+    ),
+    "abandon",
+  );
+  assert.strictEqual(
+    ConfigTransfer.getRecoveryAction(
+      { ...transaction, phase: "creating" },
+      importedBundle,
+    ),
+    "rollback",
+  );
+  assert.strictEqual(
+    ConfigTransfer.getRecoveryAction(
+      { ...transaction, phase: "cleanup" },
+      { meta: { writer: "writer-b", revision: 6 } },
+    ),
+    "abandon",
+  );
+  assert.strictEqual(
+    ConfigTransfer.getRecoveryAction(
+      { ...transaction, phase: "cleanup", remainingOldContainers: [] },
+      { meta: { writer: "writer-b", revision: 6 } },
+    ),
+    "cleanup",
+  );
+  assert.strictEqual(
+    ConfigTransfer.getRecoveryAction(
+      { ...transaction, version: ConfigTransfer.TRANSACTION_VERSION + 1 },
+      importedBundle,
+    ),
+    "ambiguous",
+  );
+});
+
+test("updates same-profile containers in place and can roll them back", async () => {
+  const { applySameProfileContainers } = loadOptionsAppTestModule();
+  const containers = createTransferFixture().containers.map((entry) => ({ ...entry }));
+  const imported = [
+    {
+      sourceCookieStoreId: "firefox-container-2",
+      name: "Private",
+      color: "purple",
+      icon: "fingerprint",
+    },
+    {
+      sourceCookieStoreId: "firefox-container-1",
+      name: "Work",
+      color: "blue",
+      icon: "circle",
+    },
+  ];
+  const removed = [];
+  const mock = {
+    contextualIdentities: {
+      async update(cookieStoreId, details) {
+        Object.assign(
+          containers.find((entry) => entry.cookieStoreId === cookieStoreId),
+          details,
+        );
+      },
+      async move(cookieStoreIds) {
+        const order = Array.isArray(cookieStoreIds) ? cookieStoreIds : [cookieStoreIds];
+        containers.sort(
+          (left, right) =>
+            order.indexOf(left.cookieStoreId) - order.indexOf(right.cookieStoreId),
+        );
+      },
+      async query() {
+        return containers.map((entry) => ({ ...entry }));
+      },
+      async remove(cookieStoreId) {
+        removed.push(cookieStoreId);
+      },
+    },
+  };
+
+  await withMockBrowser(mock, async () => {
+    const rollback = await applySameProfileContainers(
+      imported,
+      createTransferFixture().containers,
+    );
+    assert.deepStrictEqual(
+      containers.map(({ cookieStoreId, name, color, icon }) => ({
+        cookieStoreId,
+        name,
+        color,
+        icon,
+      })),
+      imported.map(({ sourceCookieStoreId, name, color, icon }) => ({
+        cookieStoreId: sourceCookieStoreId,
+        name,
+        color,
+        icon,
+      })),
+    );
+    await rollback();
+  });
+
+  assert.deepStrictEqual(containers, createTransferFixture().containers);
+  assert.deepStrictEqual(removed, []);
+});
+
+test("imports shortcuts independently and restores only rejected assignments", async () => {
+  const { importShortcutSnapshot } = loadOptionsAppTestModule();
+  const shortcuts = new Map([
+    ["command-a", "Alt+A"],
+    ["command-b", "Alt+B"],
+  ]);
+  const mock = {
+    commands: {
+      async getAll() {
+        return Array.from(shortcuts, ([name, shortcut]) => ({ name, shortcut }));
+      },
+      async update({ name, shortcut }) {
+        if (name === "command-b" && shortcut === "Ctrl+B") {
+          throw new Error("Shortcut rejected");
+        }
+        shortcuts.set(name, shortcut);
+      },
+    },
+  };
+
+  const result = await withMockBrowser(mock, () =>
+    importShortcutSnapshot({ "command-a": "Ctrl+A", "command-b": "Ctrl+B" }),
+  );
+
+  assert.deepStrictEqual(result, {
+    failedNames: ["command-b"],
+    restoreFailedNames: [],
+  });
+  assert.deepStrictEqual(shortcuts, new Map([
+    ["command-a", "Ctrl+A"],
+    ["command-b", "Alt+B"],
+  ]));
+});
+
+test("rolls back containers left by an interrupted pre-commit import", async () => {
+  const { rollbackImportTransaction } = loadOptionsAppTestModule();
+  const transaction = {
+    version: ConfigTransfer.TRANSACTION_VERSION,
+    phase: "creating",
+    createdContainers: [
+      { cookieStoreId: "new-1" },
+      { cookieStoreId: "new-2" },
+    ],
+  };
+  const storage = createLocalStorageMock({
+    [ConfigTransfer.TRANSACTION_KEY]: transaction,
+  });
+  const removed = [];
+  const existing = new Set(["new-1", "new-2"]);
+  const result = await withMockBrowser(
+    {
+      storage: { local: storage },
+      contextualIdentities: {
+        async query() {
+          return Array.from(existing, (cookieStoreId) => ({ cookieStoreId }));
+        },
+        async remove(cookieStoreId) {
+          removed.push(cookieStoreId);
+          existing.delete(cookieStoreId);
+        },
+      },
+    },
+    () => rollbackImportTransaction(transaction),
+  );
+
+  assert.strictEqual(result.complete, true);
+  assert.deepStrictEqual(removed, ["new-1", "new-2"]);
+  assert.strictEqual(storage.values[ConfigTransfer.TRANSACTION_KEY], undefined);
+});
+
+test("journals partial post-commit cleanup and resumes only remaining containers", async () => {
+  const { cleanupImportTransaction } = loadOptionsAppTestModule();
+  const transaction = {
+    version: ConfigTransfer.TRANSACTION_VERSION,
+    phase: "cleanup",
+    writerId: "writer-a",
+    targetRevision: 5,
+    remainingOldContainers: [
+      { cookieStoreId: "old-1", name: "Old one" },
+      { cookieStoreId: "old-2", name: "Old two" },
+    ],
+    shortcuts: null,
+  };
+  const storage = createLocalStorageMock({
+    [Shared.CONFIG_KEY]: Shared.createConfigBundle(Shared.createDefaultConfig(), {
+      writer: "writer-a",
+      revision: 5,
+    }),
+    [ConfigTransfer.TRANSACTION_KEY]: transaction,
+  });
+  const removed = [];
+  const existing = new Set(["old-1", "old-2"]);
+  let rejectSecond = true;
+  const mock = {
+    storage: { local: storage },
+    contextualIdentities: {
+      async query() {
+        return Array.from(existing, (cookieStoreId) => ({ cookieStoreId }));
+      },
+      async remove(cookieStoreId) {
+        if (cookieStoreId === "old-2" && rejectSecond) {
+          throw new Error("Container busy");
+        }
+        removed.push(cookieStoreId);
+        existing.delete(cookieStoreId);
+      },
+    },
+  };
+
+  await withMockBrowser(mock, async () => {
+    const partial = await cleanupImportTransaction(transaction);
+    assert.strictEqual(partial.complete, false);
+    assert.deepStrictEqual(
+      transaction.remainingOldContainers.map((entry) => entry.cookieStoreId),
+      ["old-2"],
+    );
+    rejectSecond = false;
+    const resumed = await cleanupImportTransaction(transaction);
+    assert.strictEqual(resumed.complete, true);
+  });
+
+  assert.deepStrictEqual(removed, ["old-1", "old-2"]);
+  assert.strictEqual(storage.values[ConfigTransfer.TRANSACTION_KEY], undefined);
+});
+
+test("stops destructive cleanup after a concurrent configuration change", async () => {
+  const { cleanupImportTransaction } = loadOptionsAppTestModule();
+  const transaction = {
+    version: ConfigTransfer.TRANSACTION_VERSION,
+    phase: "cleanup",
+    writerId: "writer-a",
+    targetRevision: 5,
+    remainingOldContainers: [{ cookieStoreId: "old-1", name: "Old one" }],
+    shortcuts: null,
+  };
+  const storage = createLocalStorageMock({
+    [Shared.CONFIG_KEY]: Shared.createConfigBundle(Shared.createDefaultConfig(), {
+      writer: "writer-b",
+      revision: 6,
+    }),
+    [ConfigTransfer.TRANSACTION_KEY]: transaction,
+  });
+  const removed = [];
+  const result = await withMockBrowser(
+    {
+      storage: { local: storage },
+      contextualIdentities: {
+        async query() {
+          return [{ cookieStoreId: "old-1" }];
+        },
+        async remove(cookieStoreId) {
+          removed.push(cookieStoreId);
+        },
+      },
+    },
+    () => cleanupImportTransaction(transaction),
+  );
+
+  assert.strictEqual(result.complete, false);
+  assert.strictEqual(result.unsafe, true);
+  assert.deepStrictEqual(removed, []);
+  assert.strictEqual(
+    storage.values[ConfigTransfer.TRANSACTION_KEY],
+    transaction,
+  );
+});
+
+test("abandons an interrupted cleanup cleanly after concurrent changes", async () => {
+  const { recoverImportTransaction } = loadOptionsAppTestModule();
+  const transaction = {
+    version: ConfigTransfer.TRANSACTION_VERSION,
+    phase: "cleanup",
+    writerId: "writer-a",
+    targetRevision: 5,
+    remainingOldContainers: [{ cookieStoreId: "old-1" }],
+  };
+  const storage = createLocalStorageMock({
+    [Shared.CONFIG_KEY]: Shared.createConfigBundle(Shared.createDefaultConfig(), {
+      writer: "writer-b",
+      revision: 6,
+    }),
+    [ConfigTransfer.TRANSACTION_KEY]: transaction,
+  });
+  const result = await withMockBrowser(
+    { storage: { local: storage } },
+    () => recoverImportTransaction(transaction, { interactive: false }),
+  );
+
+  assert.strictEqual(result.action, "abandon");
+  assert.strictEqual(result.complete, true);
+  assert.strictEqual(storage.values[ConfigTransfer.TRANSACTION_KEY], undefined);
+});
+
+test("treats already removed journal entries as completed cleanup", async () => {
+  const { cleanupImportTransaction } = loadOptionsAppTestModule();
+  const transaction = {
+    version: ConfigTransfer.TRANSACTION_VERSION,
+    phase: "cleanup",
+    writerId: "writer-a",
+    targetRevision: 5,
+    remainingOldContainers: [{ cookieStoreId: "already-removed" }],
+    shortcuts: null,
+  };
+  const storage = createLocalStorageMock({
+    [Shared.CONFIG_KEY]: Shared.createConfigBundle(Shared.createDefaultConfig(), {
+      writer: "writer-a",
+      revision: 5,
+    }),
+    [ConfigTransfer.TRANSACTION_KEY]: transaction,
+  });
+  const result = await withMockBrowser(
+    {
+      storage: { local: storage },
+      contextualIdentities: { async query() { return []; } },
+    },
+    () => cleanupImportTransaction(transaction),
+  );
+
+  assert.strictEqual(result.complete, true);
+  assert.strictEqual(storage.values[ConfigTransfer.TRANSACTION_KEY], undefined);
+});
+
+test("remaps imported associations to live IDs while preserving Firefox Default", () => {
+  const fixture = createTransferFixture();
+  const targetContainers = fixture.containers.map((container, index) => ({
+    ...container,
+    cookieStoreId: `firefox-container-${index + 20}`,
+  }));
+  const idMap = ConfigTransfer.createContainerIdMap(
+    fixture.document.containers,
+    targetContainers,
+  );
+  const remapped = ConfigTransfer.remapConfig(
+    fixture.document.config,
+    idMap,
+    "containers",
+  );
+
+  assert.ok(remapped.containerSettings["firefox-container-20"]);
+  assert.ok(remapped.containerSettings[Shared.FIREFOX_DEFAULT_CONTAINER]);
+  assert.strictEqual(remapped.containerSettings["firefox-container-1"], undefined);
+  assert.deepStrictEqual(remapped.hostRules[0].exceptions, ["firefox-container-20"]);
+  assert.strictEqual(remapped.ui.activeTab, "containers");
+});
+
+test("prepares a safe association-free import without discarding reusable config", () => {
+  const fixture = createTransferFixture();
+  const unlinked = ConfigTransfer.prepareUnlinkedConfig(
+    fixture.document.config,
+    "host-rules",
+  );
+
+  assert.deepStrictEqual(unlinked.containerSettings, {});
+  assert.strictEqual(unlinked.hostRules[0].enabled, false);
+  assert.deepStrictEqual(unlinked.hostRules[0].exceptions, []);
+  assert.deepStrictEqual(unlinked.proxies, fixture.document.config.proxies);
+  assert.deepStrictEqual(unlinked.globalHeaders, fixture.document.config.globalHeaders);
+  assert.strictEqual(unlinked.ui.activeTab, "host-rules");
 });
 
 test("normalizes host rule cards and enabled flags", () => {

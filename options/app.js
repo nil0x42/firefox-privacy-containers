@@ -1,4 +1,5 @@
 const Shared = globalThis.PrivacyContainersShared;
+const ConfigTransfer = globalThis.PrivacyContainersConfigTransfer;
 
 const FALLBACK_COLOR_CHOICES = [
   { color: "red", colorCode: "#d1242f" },
@@ -55,6 +56,10 @@ const MOVE_DOWN_ICON_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19 6-6h-4V5h-4v8H6l6 6Z" fill="currentColor"/></svg>';
 const ADD_ICON_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5a1 1 0 0 1 1-1Z" fill="currentColor"/></svg>';
+const EXPORT_ICON_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3ZM5 19h14v2H5v-2Z" fill="currentColor"/></svg>';
+const IMPORT_ICON_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 21h2V10.8l3.6 3.6L18 13l-6-6-6 6 1.4 1.4 3.6-3.6V21ZM5 3h14v2H5V3Z" fill="currentColor"/></svg>';
 const EYE_OPEN_ICON_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c5.2 0 9.3 3.7 10.8 6.5.2.3.2.7 0 1C21.3 15.3 17.2 19 12 19S2.7 15.3 1.2 12.5a1 1 0 0 1 0-1C2.7 8.7 6.8 5 12 5Zm0 2C8.1 7 4.8 9.6 3.3 12 4.8 14.4 8.1 17 12 17s7.2-2.6 8.7-5C19.2 9.6 15.9 7 12 7Zm0 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" fill="currentColor"/></svg>';
 const EYE_CLOSED_ICON_SVG =
@@ -133,6 +138,9 @@ const state = {
   dirty: false,
   suppressSaveStatus: false,
   suppressCommandChangeEvents: 0,
+  transferBusy: false,
+  transferInstanceId: "",
+  transferPlatform: "",
   saveInFlight: false,
   savePromise: Promise.resolve(),
   saveTimer: 0,
@@ -563,6 +571,52 @@ function createIconButton(title, svgMarkup, handler, className) {
     }
   };
   return button;
+}
+
+function requestTransferDecision({ title, messages, actions }) {
+  const dialog = document.getElementById("config-transfer-dialog");
+  const titleElement = document.getElementById("config-transfer-dialog-title");
+  const copy = document.getElementById("config-transfer-dialog-copy");
+  const actionRow = document.getElementById("config-transfer-dialog-actions");
+  if (!dialog || !titleElement || !copy || !actionRow) {
+    return Promise.resolve("cancel");
+  }
+
+  titleElement.textContent = title;
+  copy.replaceChildren(
+    ...(messages || []).map((message) => {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = message;
+      return paragraph;
+    }),
+  );
+  actionRow.textContent = "";
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      dialog.close();
+      resolve(value);
+    };
+
+    actions.forEach((action) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = action.label;
+      button.className = action.className || "subtle-button";
+      button.onclick = () => finish(action.value);
+      actionRow.appendChild(button);
+    });
+    dialog.oncancel = (event) => {
+      event.preventDefault();
+      finish("cancel");
+    };
+    dialog.showModal();
+  });
 }
 
 function createCardHeaderMain(className) {
@@ -2665,6 +2719,840 @@ async function applyShortcutSnapshot(targetShortcuts) {
   return changedNames.length > 0;
 }
 
+function getTransferValidationOptions() {
+  return {
+    supportedColors: state.colorChoices.map((choice) => choice.color),
+    supportedIcons: state.iconChoices.map((choice) => choice.icon),
+    commandNames: state.commands.map((command) => command.name),
+  };
+}
+
+function getContainerStateFingerprint(containers) {
+  return JSON.stringify(
+    (containers || []).map(({ cookieStoreId, name, color, icon }) => ({
+      cookieStoreId,
+      name,
+      color,
+      icon,
+    })),
+  );
+}
+
+function getShortcutStateFingerprint(commands) {
+  return JSON.stringify(
+    (commands || [])
+      .map(({ name, shortcut }) => ({ name, shortcut: shortcut || "" }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  );
+}
+
+function createTransferId(prefix) {
+  const suffix = globalThis.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${suffix}`;
+}
+
+async function initializeTransferMetadata() {
+  const stored = await browser.storage.local.get(ConfigTransfer.INSTANCE_KEY);
+  state.transferInstanceId = stored[ConfigTransfer.INSTANCE_KEY] || "";
+  if (!state.transferInstanceId) {
+    state.transferInstanceId = createTransferId("instance");
+    await browser.storage.local.set({
+      [ConfigTransfer.INSTANCE_KEY]: state.transferInstanceId,
+    });
+  }
+  state.transferPlatform = browser.runtime.getPlatformInfo
+    ? (await browser.runtime.getPlatformInfo()).os
+    : "";
+}
+
+function withTransferLock(task) {
+  return globalThis.navigator?.locks?.request
+    ? navigator.locks.request("privacy-containers-config-transfer", task)
+    : task();
+}
+
+function syncTransferActionState() {
+  document
+    .querySelectorAll("#config-transfer-actions button")
+    .forEach((button) => {
+      button.disabled = state.transferBusy;
+    });
+}
+
+function setTransferBusy(busy) {
+  state.transferBusy = Boolean(busy);
+  document.querySelector(".sticky-header-surface")?.toggleAttribute(
+    "inert",
+    state.transferBusy,
+  );
+  document.getElementById("app")?.toggleAttribute("inert", state.transferBusy);
+  syncTransferActionState();
+}
+
+async function synchronizeTransferState() {
+  await flushPendingIdentitySaves();
+  await flushConfigSave();
+  await refreshState();
+}
+
+function getCurrentTransferSnapshot() {
+  return {
+    revision: state.persistedMeta.revision,
+    containers: state.containers.slice(),
+    containerFingerprint: getContainerStateFingerprint(state.containers),
+    commands: state.commands.slice(),
+    shortcutFingerprint: getShortcutStateFingerprint(state.commands),
+    config: Shared.clone(state.config),
+  };
+}
+
+async function assertTransferStateUnchanged(snapshot) {
+  const [bundle, containers, commands] = await Promise.all([
+    Shared.loadConfigBundle(),
+    browser.contextualIdentities.query({}),
+    browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
+  ]);
+  if (
+    bundle.meta.revision !== snapshot.revision ||
+    getContainerStateFingerprint(containers) !== snapshot.containerFingerprint ||
+    getShortcutStateFingerprint(commands) !== snapshot.shortcutFingerprint
+  ) {
+    throw new Error(
+      "Firefox containers, configuration, or shortcuts changed during the operation. Please try again.",
+    );
+  }
+}
+
+async function captureStableTransferSnapshot() {
+  await synchronizeTransferState();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const snapshot = getCurrentTransferSnapshot();
+    try {
+      await assertTransferStateUnchanged(snapshot);
+      return snapshot;
+    } catch (error) {
+      if (attempt) {
+        throw error;
+      }
+      await refreshState();
+    }
+  }
+  throw new Error("Could not capture a stable Firefox configuration.");
+}
+
+async function saveImportedConfig(config) {
+  const previousConfig = state.config;
+  state.config = config;
+  try {
+    await persistConfigNow("Configuration imported.", { silentStatus: true });
+  } catch (error) {
+    state.savePromise = Promise.resolve();
+    if (error.bundle) {
+      syncDraftWithPersistedBundle(error.bundle);
+    } else {
+      state.config = previousConfig;
+      discardPendingConfigDraft();
+    }
+    throw error;
+  }
+}
+
+async function removeContainers(containers) {
+  let existingIds = new Set(
+    (await browser.contextualIdentities.query({})).map(
+      (container) => container.cookieStoreId,
+    ),
+  );
+  const failed = [];
+  for (const container of containers) {
+    if (!existingIds.has(container.cookieStoreId)) {
+      continue;
+    }
+    try {
+      await browser.contextualIdentities.remove(container.cookieStoreId);
+    } catch (_) {
+      existingIds = new Set(
+        (await browser.contextualIdentities.query({})).map(
+          (entry) => entry.cookieStoreId,
+        ),
+      );
+      if (existingIds.has(container.cookieStoreId)) {
+        failed.push(container);
+      }
+    }
+  }
+  return failed;
+}
+
+async function importShortcutSnapshot(shortcuts) {
+  const target = new Map(Object.entries(shortcuts));
+  if (!target.size) {
+    return { failedNames: [], restoreFailedNames: [] };
+  }
+  if (!browser.commands?.getAll || !browser.commands?.update) {
+    return { failedNames: Array.from(target.keys()), restoreFailedNames: [] };
+  }
+
+  return withSuppressedCommandChangeEvents(async () => {
+    const local = getCommandShortcutSnapshot(
+      Array.from(target.keys()),
+      await browser.commands.getAll(),
+    );
+    const changed = Array.from(target.keys()).filter(
+      (name) => !ConfigTransfer.shortcutsMatch(
+        local.get(name),
+        target.get(name),
+        state.transferPlatform,
+      ),
+    );
+    const failed = new Set();
+
+    for (const name of changed) {
+      if (!local.get(name)) {
+        continue;
+      }
+      try {
+        await browser.commands.update({ name, shortcut: "" });
+      } catch (_) {
+        failed.add(name);
+      }
+    }
+    for (const name of changed) {
+      if (failed.has(name) || !target.get(name)) {
+        continue;
+      }
+      try {
+        await browser.commands.update({ name, shortcut: target.get(name) });
+      } catch (_) {
+        failed.add(name);
+      }
+    }
+
+    const active = getCommandShortcutSnapshot(
+      Array.from(target.keys()),
+      await browser.commands.getAll(),
+    );
+    changed.forEach((name) => {
+      if (!ConfigTransfer.shortcutsMatch(
+        active.get(name),
+        target.get(name),
+        state.transferPlatform,
+      )) {
+        failed.add(name);
+      }
+    });
+
+    const restoreFailedNames = [];
+    for (const name of failed) {
+      const shortcut = local.get(name) || "";
+      if (!shortcut || active.get(name) === shortcut) {
+        continue;
+      }
+      try {
+        await browser.commands.update({ name, shortcut });
+      } catch (_) {
+        restoreFailedNames.push(name);
+      }
+    }
+    return { failedNames: Array.from(failed), restoreFailedNames };
+  });
+}
+
+async function finalizeImportedState() {
+  const warnings = [];
+  try {
+    await notifyBackgroundContainersChanged();
+  } catch (_) {
+    warnings.push("Background shortcuts could not be refreshed immediately");
+  }
+  try {
+    await refreshState();
+    renderShell();
+    await renderActiveTabContent();
+  } catch (_) {
+    warnings.push("The options view could not refresh; reload this page");
+  }
+  return warnings;
+}
+
+async function chooseMismatchImport(match) {
+  const difference = match.differences.length
+    ? `Differences: ${match.differences.join(", ")}.`
+    : "The imported containers do not match Firefox.";
+  return requestTransferDecision({
+    title: "Imported containers differ from Firefox",
+    messages: [
+      difference,
+      "Import shared settings only to keep Firefox containers, local shortcuts, and container data. Container assignments are omitted and imported Host Rules remain disabled.",
+      "Replacing containers closes their tabs, deletes cookies, sessions and site storage, and may break container mappings used by other extensions.",
+    ],
+    actions: [
+      { value: "cancel", label: "Cancel" },
+      { value: "unlinked", label: "Import shared settings only" },
+      {
+        value: "replace",
+        label: "Replace Firefox containers",
+        className: "danger",
+      },
+    ],
+  });
+}
+
+async function chooseShortcutImportMode(imported) {
+  const incompatible = ConfigTransfer.getIncompatibleShortcutNames(
+    imported.shortcuts,
+    imported.sourcePlatform,
+    state.transferPlatform,
+  );
+  if (!incompatible.length) {
+    return "import";
+  }
+  const decision = await requestTransferDecision({
+    title: "Shortcuts are not compatible",
+    messages: [
+      "Some shortcuts from this file are not compatible with this operating system. You can import the configuration without changing local shortcuts.",
+    ],
+    actions: [
+      { value: "cancel", label: "Cancel" },
+      { value: "skip", label: "Import without shortcuts", className: "primary" },
+    ],
+  });
+  return decision === "skip" ? "skip" : "cancel";
+}
+
+function getShortcutFailureMessage(result) {
+  if (!result?.failedNames?.length) {
+    return "";
+  }
+  const labels = result.failedNames.map((name) =>
+    getCommandConflictLabel(name, state.commands, state.containers),
+  );
+  const restoreNote = result.restoreFailedNames.length
+    ? " Some previous shortcuts could not be restored."
+    : "";
+  return `${labels.length} shortcut${labels.length === 1 ? "" : "s"} could not be applied and were skipped: ${labels.join(", ")}.${restoreNote}`;
+}
+
+async function applySameProfileContainers(importedContainers, liveContainers) {
+  const liveById = new Map(
+    liveContainers.map((container) => [container.cookieStoreId, container]),
+  );
+  const updated = [];
+  const originalOrder = liveContainers.map((container) => container.cookieStoreId);
+  try {
+    for (const imported of importedContainers) {
+      const live = liveById.get(imported.sourceCookieStoreId);
+      if (!live) {
+        throw new Error("A Firefox container changed before it could be updated.");
+      }
+      if (
+        live.name === imported.name &&
+        live.color === imported.color &&
+        live.icon === imported.icon
+      ) {
+        continue;
+      }
+      await browser.contextualIdentities.update(live.cookieStoreId, {
+        name: imported.name,
+        color: imported.color,
+        icon: imported.icon,
+      });
+      updated.push(live);
+    }
+    const desiredOrder = importedContainers.map(
+      (container) => container.sourceCookieStoreId,
+    );
+    if (desiredOrder.some((cookieStoreId, index) => cookieStoreId !== originalOrder[index])) {
+      await browser.contextualIdentities.move(desiredOrder, 0);
+    }
+    const applied = await browser.contextualIdentities.query({});
+    const expected = importedContainers.map((container) => ({
+      cookieStoreId: container.sourceCookieStoreId,
+      name: container.name,
+      color: container.color,
+      icon: container.icon,
+    }));
+    if (getContainerStateFingerprint(applied) !== getContainerStateFingerprint(expected)) {
+      throw new Error("Firefox containers changed while the import was being applied.");
+    }
+  } catch (error) {
+    await Promise.allSettled(
+      updated.map((container) =>
+        browser.contextualIdentities.update(container.cookieStoreId, {
+          name: container.name,
+          color: container.color,
+          icon: container.icon,
+        }),
+      ),
+    );
+    await browser.contextualIdentities.move(originalOrder, 0).catch(() => undefined);
+    throw error;
+  }
+
+  return async () => {
+    await Promise.allSettled(
+      updated.map((container) =>
+        browser.contextualIdentities.update(container.cookieStoreId, {
+          name: container.name,
+          color: container.color,
+          icon: container.icon,
+        }),
+      ),
+    );
+    await browser.contextualIdentities.move(originalOrder, 0).catch(() => undefined);
+  };
+}
+
+async function loadImportTransaction() {
+  const stored = await browser.storage.local.get(ConfigTransfer.TRANSACTION_KEY);
+  return stored[ConfigTransfer.TRANSACTION_KEY] || null;
+}
+
+async function saveImportTransaction(transaction) {
+  await browser.storage.local.set({
+    [ConfigTransfer.TRANSACTION_KEY]: transaction,
+  });
+}
+
+async function clearImportTransaction() {
+  await browser.storage.local.remove(ConfigTransfer.TRANSACTION_KEY);
+}
+
+function createImportTransaction(snapshot, shortcuts) {
+  return {
+    version: ConfigTransfer.TRANSACTION_VERSION,
+    id: createTransferId("import"),
+    phase: "creating",
+    writerId: state.writerId,
+    initialRevision: snapshot.revision,
+    targetRevision: snapshot.revision + 1,
+    createdContainers: [],
+    remainingOldContainers: snapshot.containers,
+    shortcuts,
+  };
+}
+
+async function rollbackImportTransaction(transaction) {
+  const failed = await removeContainers(transaction.createdContainers || []);
+  if (failed.length) {
+    transaction.createdContainers = failed;
+    await saveImportTransaction(transaction);
+    return { complete: false, failed };
+  }
+  await clearImportTransaction();
+  return { complete: true, failed: [] };
+}
+
+async function cleanupImportTransaction(transaction) {
+  const existingIds = new Set(
+    (await browser.contextualIdentities.query({})).map(
+      (container) => container.cookieStoreId,
+    ),
+  );
+  const remaining = (transaction.remainingOldContainers || []).filter(
+    (container) => existingIds.has(container.cookieStoreId),
+  );
+  if (remaining.length !== transaction.remainingOldContainers?.length) {
+    transaction.remainingOldContainers = remaining;
+    await saveImportTransaction(transaction);
+  }
+  const failed = [];
+  for (const container of remaining) {
+    const bundle = await Shared.loadConfigBundle();
+    if (ConfigTransfer.getRecoveryAction(transaction, bundle) !== "cleanup") {
+      return {
+        complete: false,
+        failed: transaction.remainingOldContainers,
+        shortcutResult: null,
+        unsafe: true,
+      };
+    }
+    try {
+      await browser.contextualIdentities.remove(container.cookieStoreId);
+      transaction.remainingOldContainers = transaction.remainingOldContainers.filter(
+        (entry) => entry.cookieStoreId !== container.cookieStoreId,
+      );
+      await saveImportTransaction(transaction);
+    } catch (_) {
+      const stillExists = (await browser.contextualIdentities.query({})).some(
+        (entry) => entry.cookieStoreId === container.cookieStoreId,
+      );
+      if (stillExists) {
+        failed.push(container);
+      } else {
+        transaction.remainingOldContainers =
+          transaction.remainingOldContainers.filter(
+            (entry) => entry.cookieStoreId !== container.cookieStoreId,
+          );
+        await saveImportTransaction(transaction);
+      }
+    }
+  }
+  if (failed.length) {
+    transaction.remainingOldContainers = failed;
+    await saveImportTransaction(transaction);
+    return { complete: false, failed, shortcutResult: null };
+  }
+
+  const shortcutResult = transaction.shortcuts
+    ? await importShortcutSnapshot(transaction.shortcuts)
+    : { failedNames: [], restoreFailedNames: [] };
+  await clearImportTransaction();
+  return { complete: true, failed: [], shortcutResult };
+}
+
+async function recoverImportTransaction(transaction, { interactive = true } = {}) {
+  const bundle = await Shared.loadConfigBundle();
+  const action = ConfigTransfer.getRecoveryAction(transaction, bundle);
+  if (action === "rollback") {
+    return { action, ...(await rollbackImportTransaction(transaction)) };
+  }
+  if (action === "cleanup") {
+    return { action, ...(await cleanupImportTransaction(transaction)) };
+  }
+  if (action === "none") {
+    return { action, complete: true, failed: [] };
+  }
+  if (action === "abandon") {
+    await clearImportTransaction();
+    if (interactive) {
+      await requestTransferDecision({
+        title: "Import cleanup stopped",
+        messages: [
+          "The configuration changed after the import. Remaining previous containers were kept so no newer data or mappings are deleted.",
+        ],
+        actions: [{ value: "close", label: "Close" }],
+      });
+    }
+    return { action, complete: true, failed: [] };
+  }
+  if (interactive) {
+    await requestTransferDecision({
+      title: "Import recovery needs attention",
+      messages: [
+        "Firefox changed while an import was interrupted. No containers were deleted because the safe recovery action is unclear.",
+      ],
+      actions: [{ value: "cancel", label: "Close" }],
+    });
+  }
+  return { action: "ambiguous", complete: false, failed: [] };
+}
+
+async function retryIncompleteCleanup(transaction, initialResult = null) {
+  let result = initialResult || await cleanupImportTransaction(transaction);
+  while (!result.complete) {
+    if (result.unsafe) {
+      return result;
+    }
+    const names = result.failed
+      .map((container) => container.name || container.cookieStoreId)
+      .join(", ");
+    const decision = await requestTransferDecision({
+      title: "Container cleanup is incomplete",
+      messages: [
+        `The configuration was imported, but Firefox could not remove: ${names}. The remaining cleanup can be retried safely.`,
+      ],
+      actions: [
+        { value: "close", label: "Close" },
+        { value: "retry", label: "Retry cleanup", className: "primary" },
+      ],
+    });
+    if (decision !== "retry") {
+      break;
+    }
+    result = await cleanupImportTransaction(transaction);
+  }
+  return result;
+}
+
+async function replaceContainersFromImport(imported, snapshot, shortcuts) {
+  const transaction = createImportTransaction(snapshot, shortcuts);
+  let committed = false;
+  await saveImportTransaction(transaction);
+  try {
+    for (const container of imported.containers) {
+      const created = await browser.contextualIdentities.create({
+        name: container.name,
+        color: container.color,
+        icon: container.icon,
+      });
+      transaction.createdContainers.push(created);
+      await saveImportTransaction(transaction);
+    }
+
+    transaction.phase = "commit-pending";
+    await saveImportTransaction(transaction);
+    const idMap = ConfigTransfer.createContainerIdMap(
+      imported.containers,
+      transaction.createdContainers,
+    );
+    await saveImportedConfig(
+      ConfigTransfer.remapConfig(
+        imported.config,
+        idMap,
+        snapshot.config.ui.activeTab,
+      ),
+    );
+    committed = true;
+    transaction.targetRevision = state.persistedMeta.revision;
+    transaction.phase = "cleanup";
+    await saveImportTransaction(transaction);
+    const cleanup = await retryIncompleteCleanup(transaction);
+    if (cleanup.unsafe) {
+      await clearImportTransaction();
+      cleanup.abandoned = true;
+    }
+    return cleanup;
+  } catch (error) {
+    const recovery = await (committed
+      ? recoverImportTransaction(transaction, { interactive: false })
+      : rollbackImportTransaction(transaction)
+    ).catch(() => ({ complete: false }));
+    if (!recovery.complete) {
+      throw new Error(
+        `${error.message} Import recovery is still pending; reopen this page to retry safely.`,
+      );
+    }
+    throw error;
+  }
+}
+
+async function importConfigurationDocument(imported) {
+  const snapshot = await captureStableTransferSnapshot();
+  const match = ConfigTransfer.analyzeContainerMatch(
+    imported.containers,
+    snapshot.containers,
+    imported.sourceInstanceId,
+    state.transferInstanceId,
+  );
+  const action =
+    match.mode === "mismatch" ? await chooseMismatchImport(match) : match.mode;
+  if (action === "cancel") {
+    return { cancelled: true };
+  }
+
+  if (action === "unlinked") {
+    await assertTransferStateUnchanged(snapshot);
+    await saveImportedConfig(
+      ConfigTransfer.prepareUnlinkedConfig(
+        imported.config,
+        snapshot.config.ui.activeTab,
+      ),
+    );
+    const warnings = await finalizeImportedState();
+    return {
+      cancelled: false,
+      message: warnings.length
+        ? `Shared settings imported. Container assignments and shortcuts were kept local; imported Host Rules remain disabled. ${warnings.join(". ")}.`
+        : "Shared settings imported. Container assignments and shortcuts were kept local; imported Host Rules remain disabled.",
+      error: warnings.length > 0,
+    };
+  }
+
+  const shortcutMode = await chooseShortcutImportMode(imported);
+  if (shortcutMode === "cancel") {
+    return { cancelled: true };
+  }
+  await assertTransferStateUnchanged(snapshot);
+  const shortcuts = shortcutMode === "skip" ? null : imported.shortcuts;
+  let shortcutResult = { failedNames: [], restoreFailedNames: [] };
+  let cleanupPending = false;
+  let cleanupAbandoned = false;
+
+  if (action === "replace" || action === "empty") {
+    const replacement = await replaceContainersFromImport(
+      imported,
+      snapshot,
+      shortcuts,
+    );
+    shortcutResult = replacement.shortcutResult || shortcutResult;
+    cleanupAbandoned = Boolean(replacement.abandoned);
+    cleanupPending = !replacement.complete && !cleanupAbandoned;
+  } else {
+    let rollbackContainers = null;
+    try {
+      const containerIdMap = action === "same-profile"
+        ? ConfigTransfer.createSameProfileIdMap(
+            imported.containers,
+            snapshot.containers,
+          )
+        : ConfigTransfer.createContainerIdMap(
+            imported.containers,
+            snapshot.containers,
+          );
+      if (action === "same-profile") {
+        rollbackContainers = await applySameProfileContainers(
+          imported.containers,
+          snapshot.containers,
+        );
+      }
+      await saveImportedConfig(
+        ConfigTransfer.remapConfig(
+          imported.config,
+          containerIdMap,
+          snapshot.config.ui.activeTab,
+        ),
+      );
+    } catch (error) {
+      await rollbackContainers?.();
+      throw error;
+    }
+    if (shortcuts) {
+      shortcutResult = await importShortcutSnapshot(shortcuts);
+    }
+  }
+
+  const warnings = await finalizeImportedState();
+  const shortcutWarning = getShortcutFailureMessage(shortcutResult);
+  if (shortcutWarning) {
+    warnings.push(shortcutWarning);
+  }
+  if (shortcutMode === "skip") {
+    warnings.push("Local shortcuts were left unchanged");
+  }
+  if (cleanupPending) {
+    warnings.push(
+      "Some previous Firefox containers remain; reopen this page to resume safe cleanup",
+    );
+  }
+  if (cleanupAbandoned) {
+    warnings.push(
+      "The configuration changed concurrently, so previous containers were kept for safety",
+    );
+  }
+  return {
+    cancelled: false,
+    message: warnings.length
+      ? `Configuration imported. ${warnings.join(". ")}.`
+      : action === "same-profile"
+      ? "Configuration imported; existing Firefox containers were updated in place."
+      : "Configuration imported successfully.",
+    error: cleanupPending || cleanupAbandoned,
+  };
+}
+
+async function recoverPendingImport() {
+  const transaction = await loadImportTransaction();
+  if (!transaction) {
+    return "";
+  }
+  const result = await recoverImportTransaction(transaction);
+  if (!result.complete) {
+    if (result.action === "cleanup") {
+      const retry = await retryIncompleteCleanup(transaction, result);
+      return retry.complete
+        ? "Interrupted import cleanup completed."
+        : "An interrupted import still has container cleanup pending. Reopen this page to retry.";
+    }
+    return "An interrupted import needs attention; no containers were deleted automatically.";
+  }
+  const shortcutWarning = getShortcutFailureMessage(result.shortcutResult);
+  const message = result.action === "rollback"
+    ? "Interrupted import rolled back safely."
+    : result.action === "abandon"
+    ? "Interrupted cleanup stopped; remaining previous containers were kept."
+    : "Interrupted import completed safely.";
+  return shortcutWarning ? `${message} ${shortcutWarning}` : message;
+}
+
+function downloadConfiguration(documentValue) {
+  const blob = new Blob([`${JSON.stringify(documentValue, null, 2)}\n`], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `privacy-containers-config-${new Date()
+    .toISOString()
+    .slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function exportConfigurationUnlocked() {
+  setStatus("Preparing export...", false);
+  const snapshot = await captureStableTransferSnapshot();
+  const documentValue = ConfigTransfer.createExportDocument(
+    snapshot.config,
+    snapshot.containers,
+    snapshot.commands,
+    undefined,
+    {
+      sourceInstanceId: state.transferInstanceId,
+      sourcePlatform: state.transferPlatform,
+    },
+  );
+  const hasCredentials = ConfigTransfer.hasProxyCredentials(documentValue.config);
+  if (hasCredentials) {
+    const decision = await requestTransferDecision({
+      title: "Export configuration?",
+      messages: [
+        "The JSON file contains proxy credentials in plain text. Store it securely.",
+      ],
+      actions: [
+        { value: "cancel", label: "Cancel" },
+        { value: "export", label: "Export JSON", className: "primary" },
+      ],
+    });
+    if (decision !== "export") {
+      clearStatus();
+      return;
+    }
+  }
+  downloadConfiguration(documentValue);
+  setStatus(
+    hasCredentials
+      ? "Configuration exported. Keep the JSON file secure."
+      : "Configuration exported.",
+    false,
+  );
+}
+
+async function exportConfiguration() {
+  if (state.transferBusy) {
+    return;
+  }
+  setTransferBusy(true);
+  try {
+    await withTransferLock(exportConfigurationUnlocked);
+  } finally {
+    setTransferBusy(false);
+  }
+}
+
+async function importConfigurationFileUnlocked(file) {
+  setStatus("Checking configuration...", false);
+  const imported = ConfigTransfer.parseImportText(
+    await file.text(),
+    getTransferValidationOptions(),
+  );
+  setStatus("Importing configuration...", false);
+  const result = await importConfigurationDocument(imported);
+  if (!result.cancelled) {
+    setStatus(result.message, result.error);
+  } else {
+    clearStatus();
+  }
+}
+
+async function importConfigurationFile(file) {
+  if (!file) {
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("The selected configuration file is too large.");
+  }
+  setTransferBusy(true);
+  try {
+    await withTransferLock(() => importConfigurationFileUnlocked(file));
+  } finally {
+    setTransferBusy(false);
+  }
+}
+
 async function swapShortcutAssignmentsBetweenSlots(slotA, slotB) {
   const slotASupportsCommands = slotSupportsCommands(slotA);
   const slotBSupportsCommands = slotSupportsCommands(slotB);
@@ -3041,6 +3929,29 @@ async function runHeaderPrimaryAction(activeTab) {
   }
 }
 
+function renderConfigTransferActions() {
+  const actions = document.getElementById("config-transfer-actions");
+  const importInput = document.getElementById("config-import-input");
+  if (!actions || !importInput) {
+    return;
+  }
+
+  const exportButton = createIconButton(
+    "Export configuration",
+    EXPORT_ICON_SVG,
+    exportConfiguration,
+    "icon-button config-transfer-button",
+  );
+  const importButton = createIconButton(
+    "Import configuration",
+    IMPORT_ICON_SVG,
+    () => importInput.click(),
+    "icon-button config-transfer-button",
+  );
+  actions.replaceChildren(exportButton, importButton);
+  syncTransferActionState();
+}
+
 function renderHeaderPrimaryAction() {
   const slot = document.getElementById("header-primary-action-slot");
   if (!slot) {
@@ -3133,6 +4044,7 @@ function renderTabNav() {
   });
 
   renderHeaderPrimaryAction();
+  renderConfigTransferActions();
   scheduleStickyHeaderMetrics();
 }
 
@@ -5330,12 +6242,25 @@ function bindEvents() {
   document.getElementById("refresh-config").onclick = () => {
     reloadPersistedState().catch((error) => setStatus(error.message, true));
   };
+  document.getElementById("config-import-input").onchange = (event) => {
+    const input = event.currentTarget;
+    const file = input.files && input.files[0];
+    input.value = "";
+    importConfigurationFile(file).catch((error) => {
+      setStatus(error.message, true);
+    });
+  };
 }
 
 async function main() {
   bindEvents();
+  await initializeTransferMetadata();
+  const recoveryMessage = await withTransferLock(recoverPendingImport);
   await refreshState();
   await render();
+  if (recoveryMessage) {
+    setStatus(recoveryMessage, /pending|needs attention/.test(recoveryMessage));
+  }
 }
 
 if (typeof module !== "undefined" && module.exports) {
@@ -5345,7 +6270,13 @@ if (typeof module !== "undefined" && module.exports) {
     buildTabSummaries,
     getHeaderPrimaryActionDescriptor,
     getInternalShortcutConflictIssue,
+    importShortcutSnapshot,
+    applySameProfileContainers,
+    cleanupImportTransaction,
+    recoverImportTransaction,
+    rollbackImportTransaction,
     shouldShowExternalContainerGuessWarning,
+    withTransferLock,
   };
 } else {
   main().catch((error) => {

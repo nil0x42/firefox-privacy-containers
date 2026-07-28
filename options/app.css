@@ -338,6 +338,28 @@ textarea {
   flex: 0 0 auto;
 }
 
+.header-action-cluster {
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+}
+
+.config-transfer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.34rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--brand) 4%, var(--surface-translucent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.config-transfer-button {
+  --card-top-control-height: 2.25rem;
+}
+
 .header-primary-action {
   display: inline-flex;
   align-items: center;
@@ -2361,6 +2383,45 @@ button.firefox-pref-copy-button {
   box-shadow: none;
 }
 
+.config-transfer-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--elevation-card);
+}
+
+.config-transfer-dialog::backdrop {
+  background: color-mix(in srgb, var(--text) 34%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.config-transfer-dialog h2,
+.config-transfer-dialog p {
+  margin: 0;
+}
+
+.config-transfer-dialog h2 {
+  font-size: 1.1rem;
+}
+
+.config-transfer-dialog-copy {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+  color: var(--text-muted);
+}
+
+.config-transfer-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin-top: 1rem;
+}
+
 /*
  * Chromatic contracts
  * -------------------
@@ -2783,7 +2844,12 @@ button:disabled:not(.picker-option) {
   }
 
   .header-primary-action-slot {
+    flex: 1 1 auto;
     justify-content: stretch;
+  }
+
+  .header-action-cluster {
+    width: 100%;
   }
 
   .header-primary-action {

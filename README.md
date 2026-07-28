@@ -43,6 +43,8 @@ shows a clear blocked page and can offer an allowed container for reopening it.
 tabs, and pin or unpin the current tab with configurable shortcuts. Container
 slots follow Firefox’s live container order.
 
+**Move your setup.** Import or export the configuration as JSON.
+
 ## Small actions, immediate payoff
 
 The toolbar popup is intentionally compact. On the current web page it can:

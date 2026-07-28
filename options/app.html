@@ -27,7 +27,10 @@
           <div class="tab-strip-shell">
             <nav id="tab-nav" class="tab-nav" aria-label="Options sections"></nav>
           </div>
-          <div id="header-primary-action-slot" class="header-primary-action-slot"></div>
+          <div class="header-action-cluster">
+            <div id="config-transfer-actions" class="config-transfer-actions"></div>
+            <div id="header-primary-action-slot" class="header-primary-action-slot"></div>
+          </div>
         </div>
       </div>
     </header>
@@ -54,7 +57,15 @@
     </div>
     <main id="app"></main>
 
+    <input id="config-import-input" type="file" accept="application/json,.json" hidden />
+    <dialog id="config-transfer-dialog" class="config-transfer-dialog">
+      <h2 id="config-transfer-dialog-title"></h2>
+      <div id="config-transfer-dialog-copy" class="config-transfer-dialog-copy"></div>
+      <div id="config-transfer-dialog-actions" class="config-transfer-dialog-actions"></div>
+    </dialog>
+
     <script src="../utils/shared.js"></script>
+    <script src="config-transfer.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
