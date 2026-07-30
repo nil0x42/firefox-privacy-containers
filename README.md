@@ -1,83 +1,58 @@
 # Privacy Containers
 
-**Give every browser identity its own route, rules, and working context.**
+**Per-container proxy routing, request controls, and shortcuts for Firefox.**
 
-Privacy Containers is a Firefox extension for security testing with Firefox
-Containers. It turns a browser full of overlapping sessions into a workspace
-you can reason about: a client container through one proxy, a test account
-through another, and your everyday browsing left alone.
+Privacy Containers is a Firefox extension for web testing and multi-account
+work. Each container gets its own route, headers, and access rules.
 
-No more wondering which tab is using which route.
+Route a client session through an intercepting proxy, keep another account
+direct, and leave everyday browsing untouched—all in the same Firefox window.
 
-## One browser, clearly separated contexts
+https://addons.mozilla.org/addon/privacy-containers/
 
-Create or reuse Firefox containers, then give each one the behaviour it needs.
-A container can take a direct route or use a reusable HTTP, HTTPS, SOCKS5,
-SOCKS4, or SOCKS4a proxy. Add its own request headers, give it a distinct
-PwnFox color when needed, and keep the setup available from a single
-configuration page.
+![Privacy Containers configuration overview](.github/images/configuration-overview.png)
 
-```
-Container  →  Proxy route  →  Request headers  →  Host rules
-```
+## What it does
 
-The result is practical isolation for the work that matters: authenticated
-testing, multi-account workflows, local development, and proxy-based analysis.
+- Routes each container directly or through reusable HTTP, HTTPS, or SOCKS
+  proxies, with remote DNS, HTTP/HTTPS authentication, and proxy bypass rules
+  when needed.
+- Shows at a glance whether the current tab is using a proxy.
+- Adds request headers globally or per container, including the
+  PwnFox-compatible `X-PwnFox-Color` header.
+- Uses Host Rules to keep selected hosts in the right containers. A blocked
+  link can be reopened directly in an allowed one.
+- Opens or reopens tabs in a chosen container, with configurable shortcuts for
+  switching, moving, and pinning tabs.
+- Imports and exports its configuration as JSON.
 
-## Built for the testing flow
+![Host Rules limiting sites to selected containers](.github/images/host-rules-configuration.png)
 
-**Route with intent.** Define a proxy once and assign it to any container.
-SOCKS4a/SOCKS5 remote DNS, HTTP/HTTPS proxy authentication, localhost
-bypasses, and per-proxy exceptions are there when a real environment needs
-them.
+## Useful tools in the popup
 
-**Make each request identifiable.** Add custome headers globally or per container.
-Enable the PwnFox-compatible `X-PwnFox-Color` header to keep your traffic easy
-to recognise in supporting tools.
+The toolbar popup can also fix common page annoyances without opening DevTools:
 
-**Control where a container can go.** Host Rules let you block a host or allow
-it only from selected containers. When navigation is stopped, the extension
-shows a clear blocked page and can offer an allowed container for reopening it.
+- bypass blocked paste and text selection;
+- re-enable disabled form fields;
+- clear local storage, session storage, or cookies for the current page.
 
-**Stay in the keyboard flow.** Open or reopen a tab in a container, move through
-tabs, and pin or unpin the current tab with configurable shortcuts. Container
-slots follow Firefox’s live container order.
+![Quick page tools in the toolbar popup](.github/images/toolbar-popup.png)
 
-**Move your setup.** Import or export the configuration as JSON.
-
-## Small actions, immediate payoff
-
-The toolbar popup is intentionally compact. On the current web page it can:
-
-- restore paste or text selection when a page blocks it;
-- enable disabled inputs;
-- clear the page’s local storage, session storage, or cookies.
-
-Each action is explicit, targets the active HTTP(S) tab only, and reports its
-result in place.
-
-## Get useful in three steps
+## Get started
 
 1. Open **Containers & proxies config** from the toolbar popup.
-2. Create a proxy and assign it to a Firefox container.
-3. Open a tab in that container and work with a route you can identify.
+2. Create or reuse a Firefox Container and assign a proxy if it needs one.
+3. Open a tab in that container. Its route applies immediately.
 
-From there, add headers, shortcuts, or Host Rules only when the workflow calls
-for them.
+Add headers, Host Rules, or shortcuts only when you need them.
 
-## A transparent power-user extension
+## Privacy
 
-Privacy Containers needs broad Firefox permissions because routing requests,
-managing container tabs, injecting user-requested page actions, and clearing
-cookies are its core features. Its configuration is stored locally in Firefox;
-it has no account, cloud service, or remotely loaded code.
+There is no account, telemetry, cloud service, or remotely loaded code. Settings
+stay in Firefox, and only containers you assign to a proxy use it.
 
-The extension does no data collection nor transmission. If you configure a proxy,
-the traffic in the assigned container is of course sent through that proxy under
-your control.
+## Requirements and license
 
-## Compatibility and license
-
-Designed for desktop Firefox 142 and later, with Firefox Containers enabled.
+Requires desktop Firefox 142 or later with Firefox Containers enabled.
 
 Released under the [Mozilla Public License 2.0](LICENSE).
