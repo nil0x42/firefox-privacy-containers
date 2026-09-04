@@ -1,4 +1,6 @@
 import { showNotification } from "./notifications.js";
+import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
+import { canReopenTabUrl } from "../domain/tabs.js";
 
 export function createBlockedPageStore(deps) {
     const {
@@ -297,7 +299,7 @@ export function createBlockedPageStore(deps) {
       if (
         !decision ||
         decision.mode !== "blacklist" ||
-        !Shared.canReopenTabUrl(details && details.url)
+        !canReopenTabUrl(details && details.url)
       ) {
         return "";
       }
@@ -412,7 +414,7 @@ export function createBlockedPageStore(deps) {
       const cookieStoreId =
         requestContextCache.normalizeMessageText(
           message && message.cookieStoreId,
-        ) || Shared.FIREFOX_DEFAULT_CONTAINER;
+        ) || FIREFOX_DEFAULT_CONTAINER;
       const referenceTab = sender && sender.tab ? sender.tab : null;
       const entry = await getBlockedPageEntry(entryId);
 
@@ -444,7 +446,7 @@ export function createBlockedPageStore(deps) {
         throw new Error("The allowed container no longer exists.");
       }
 
-      if (!Shared.canReopenTabUrl(entry.url)) {
+      if (!canReopenTabUrl(entry.url)) {
         throw new Error("The blocked URL cannot be reopened in another container.");
       }
 

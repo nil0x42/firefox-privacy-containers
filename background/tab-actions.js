@@ -1,4 +1,9 @@
 import { showNotification } from "./notifications.js";
+import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
+import {
+  canReopenTabUrl,
+  getTabPlacementValidation as validateTabPlacement,
+} from "../domain/tabs.js";
 
 export function createTabActions(deps) {
     const { browser, Shared } = deps;
@@ -50,7 +55,7 @@ export function createTabActions(deps) {
     }
 
     function getTabPlacementValidation(tab) {
-      return Shared.getTabPlacementValidation(tab);
+      return validateTabPlacement(tab);
     }
 
     function buildTabCreateProperties(referenceTab, overrides) {
@@ -63,7 +68,7 @@ export function createTabActions(deps) {
     }
 
     function withContainer(createProperties, cookieStoreId) {
-      if (!cookieStoreId || cookieStoreId === Shared.FIREFOX_DEFAULT_CONTAINER) {
+      if (!cookieStoreId || cookieStoreId === FIREFOX_DEFAULT_CONTAINER) {
         return createProperties;
       }
 
@@ -101,7 +106,7 @@ export function createTabActions(deps) {
       }
 
       await openTabInContainerFromReferenceTab(
-        activeTab.cookieStoreId || Shared.FIREFOX_DEFAULT_CONTAINER,
+        activeTab.cookieStoreId || FIREFOX_DEFAULT_CONTAINER,
         activeTab,
       );
     }
@@ -114,7 +119,7 @@ export function createTabActions(deps) {
       }
 
       const pinned = Boolean(activeTab.pinned);
-      if (Shared.canReopenTabUrl(activeTab.url)) {
+      if (canReopenTabUrl(activeTab.url)) {
         await openTabInContainerFromReferenceTab(cookieStoreId, activeTab, {
           pinned,
           url: activeTab.url,
@@ -127,14 +132,14 @@ export function createTabActions(deps) {
         await showDefaultContainerNotification();
         if (
           Shared.getEffectiveCookieStoreId(activeTab.cookieStoreId) ===
-          Shared.FIREFOX_DEFAULT_CONTAINER
+          FIREFOX_DEFAULT_CONTAINER
         ) {
           return false;
         }
 
         try {
           await openTabInContainerFromReferenceTab(
-            Shared.FIREFOX_DEFAULT_CONTAINER,
+            FIREFOX_DEFAULT_CONTAINER,
             activeTab,
             { pinned, url: activeTab.url },
           );

@@ -6,6 +6,8 @@ import {
   saveConfigBundle,
 } from "./config-client.js";
 import * as OptionsUi from "../domain/ui-state.js";
+import * as Container from "../domain/containers.js";
+import * as Shortcut from "../domain/shortcuts.js";
 
 const ICON_SVG_BY_NAME = {
   fingerprint:
@@ -234,7 +236,7 @@ function formatActiveCountLabel(count) {
 function buildTabSummaries(config, containers) {
   const normalizedConfig = Shared.normalizeConfig(config);
   const visibleContainers = Array.isArray(containers) ? containers : [];
-  const containerCount = Shared.getContainerSlots(visibleContainers).length;
+  const containerCount = Container.getContainerSlots(visibleContainers).length;
 
   let proxyActiveCount = 0;
   let proxyDraftCount = 0;
@@ -1432,7 +1434,7 @@ function findContainerNameConflict(name, excludedCookieStoreId) {
   }
 
   return (
-    Shared.getContainerSlots(state.containers).find((slotEntry) => {
+    Container.getContainerSlots(state.containers).find((slotEntry) => {
       if (slotEntry.cookieStoreId === excludedCookieStoreId) {
         return false;
       }
@@ -2220,20 +2222,20 @@ function getCommandConflictLabel(
     return description.trim();
   }
 
-  const fixedDescription = Shared.getFixedShortcutCommandDescription(commandName);
+  const fixedDescription = Shortcut.getFixedShortcutCommandDescription(commandName);
   if (fixedDescription) {
     return fixedDescription;
   }
 
-  const slot = Shared.getSlotNumberFromCommandName(commandName);
-  const slotEntry = Shared.getContainerSlot(containers, slot);
+  const slot = Shortcut.getSlotNumberFromCommandName(commandName);
+  const slotEntry = Container.getContainerSlot(containers, slot);
   const containerLabel = slotEntry?.name || `container slot ${slot}`;
 
-  if (Shared.isOpenContainerSlotCommand(commandName)) {
+  if (Shortcut.isOpenContainerSlotCommand(commandName)) {
     return `Open a new tab in ${containerLabel}`;
   }
 
-  if (Shared.isReopenContainerSlotCommand(commandName)) {
+  if (Shortcut.isReopenContainerSlotCommand(commandName)) {
     return `Reopen the current tab in ${containerLabel}`;
   }
 
@@ -2622,13 +2624,13 @@ async function notifyBackgroundContainersChanged() {
 }
 
 function slotSupportsCommands(slot) {
-  return Number.isInteger(slot) && slot >= 0 && slot < Shared.SHORTCUT_SLOT_COUNT;
+  return Number.isInteger(slot) && slot >= 0 && slot < Shortcut.SHORTCUT_SLOT_COUNT;
 }
 
 function getSlotCommandNames(slot) {
   return [
-    Shared.getOpenContainerSlotCommandName(slot),
-    Shared.getReopenContainerSlotCommandName(slot),
+    Shortcut.getOpenContainerSlotCommandName(slot),
+    Shortcut.getReopenContainerSlotCommandName(slot),
   ];
 }
 
@@ -3560,7 +3562,7 @@ async function swapShortcutAssignmentsBetweenSlots(slotA, slotB) {
   if (!slotASupportsCommands || !slotBSupportsCommands) {
     return {
       message:
-        `Container moved. Shortcut assignments only follow moves within the first ${Shared.SHORTCUT_SLOT_COUNT} positions.`,
+        `Container moved. Shortcut assignments only follow moves within the first ${Shortcut.SHORTCUT_SLOT_COUNT} positions.`,
     };
   }
 
@@ -3871,7 +3873,7 @@ async function updateCommandShortcut(commandName, shortcut, message) {
   });
   await refreshCommands();
   const activeShortcut = getCommandShortcut(commandName);
-  const activationIssue = Shared.getShortcutActivationIssue(
+  const activationIssue = Shortcut.getShortcutActivationIssue(
     shortcut,
     activeShortcut,
   );
@@ -4078,7 +4080,7 @@ function createShortcutEntry(label, commandName, helpText) {
       return;
     }
 
-    const shortcutValue = Shared.captureShortcutFromEventData(event);
+    const shortcutValue = Shortcut.captureShortcutFromEventData(event);
     if (!shortcutValue) {
       setStatus(
         "Shortcut capture requires Ctrl, Alt or Command plus a supported key.",
@@ -4376,36 +4378,36 @@ function renderGlobalOptions(root) {
     [
       {
         label: "Open a new tab on the current container",
-        commandName: Shared.OPEN_CURRENT_CONTAINER_TAB_COMMAND,
+        commandName: Shortcut.OPEN_CURRENT_CONTAINER_TAB_COMMAND,
         helpText:
           "Open a blank tab next to the current one, reusing the active tab container.",
       },
       {
         label: "Go one tab to the left",
-        commandName: Shared.GO_ONE_TAB_LEFT_COMMAND,
+        commandName: Shortcut.GO_ONE_TAB_LEFT_COMMAND,
         helpText: "Activate the previous tab in the current window and wrap at the edge.",
       },
       {
         label: "Go one tab to the right",
-        commandName: Shared.GO_ONE_TAB_RIGHT_COMMAND,
+        commandName: Shortcut.GO_ONE_TAB_RIGHT_COMMAND,
         helpText: "Activate the next tab in the current window and wrap at the edge.",
       },
     ],
     [
       {
         label: "Pin/Unpin tab",
-        commandName: Shared.TOGGLE_TAB_PINNED_COMMAND,
+        commandName: Shortcut.TOGGLE_TAB_PINNED_COMMAND,
         helpText: "Toggle pinning for the active tab in the current window.",
       },
       {
         label: "Move tab right",
-        commandName: Shared.MOVE_TAB_RIGHT_COMMAND,
+        commandName: Shortcut.MOVE_TAB_RIGHT_COMMAND,
         helpText:
           "Move the active tab one position right within its pinned or unpinned group.",
       },
       {
         label: "Move tab left",
-        commandName: Shared.MOVE_TAB_LEFT_COMMAND,
+        commandName: Shortcut.MOVE_TAB_LEFT_COMMAND,
         helpText:
           "Move the active tab one position left within its pinned or unpinned group.",
       },
@@ -4511,14 +4513,14 @@ function appendContainerShortcutControls(slotEntry, group, root) {
   group.appendChild(
     createShortcutEntry(
       "Open a new tab on this container",
-      Shared.getOpenContainerSlotCommandName(slotEntry.slot),
+      Shortcut.getOpenContainerSlotCommandName(slotEntry.slot),
       "Opens a blank tab next to the active tab and assigns this container.",
     ),
   );
   group.appendChild(
     createShortcutEntry(
       "Reopen current tab on this container",
-      Shared.getReopenContainerSlotCommandName(slotEntry.slot),
+      Shortcut.getReopenContainerSlotCommandName(slotEntry.slot),
       "Reopens web pages and blank tabs in this container. Other URLs stay in Firefox's default container.",
     ),
   );
@@ -4835,7 +4837,7 @@ function createContainerCard(
 }
 
 function renderContainersList(root, containerIntegrity) {
-  const slots = Shared.getContainerSlots(state.containers);
+  const slots = Container.getContainerSlots(state.containers);
   const ambiguousContainerIds = new Set(containerIntegrity.ambiguousContainerIds);
 
   root.appendChild(
@@ -4879,7 +4881,7 @@ function renderContainersTab(root, containerIntegrity) {
 
 function createProxyDependencyNote(proxyId, containerIntegrity) {
   const ambiguousContainerIds = new Set(containerIntegrity.ambiguousContainerIds);
-  const dependents = Shared.getContainerSlots(state.containers)
+  const dependents = Container.getContainerSlots(state.containers)
     .filter(
       (slotEntry) =>
         Shared.getAssignedProxyId(state.config, slotEntry.cookieStoreId) === proxyId,
@@ -5336,7 +5338,7 @@ function renderProxiesTab(root, containerIntegrity) {
 
 function getHostRuleContainerChoices(containerIntegrity) {
   const ambiguousContainerIds = new Set(containerIntegrity.ambiguousContainerIds);
-  return Shared.getContainerSlots(state.containers).map((slotEntry) => ({
+  return Container.getContainerSlots(state.containers).map((slotEntry) => ({
     cookieStoreId: slotEntry.cookieStoreId,
     name: slotEntry.name,
     color: slotEntry.color,

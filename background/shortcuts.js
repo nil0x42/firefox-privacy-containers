@@ -1,5 +1,7 @@
+import * as Shortcut from "../domain/shortcuts.js";
+
 export function createShortcutManager(deps) {
-    const { state, browser, Shared, containerCache, tabActions } = deps;
+    const { state, browser, containerCache, tabActions } = deps;
 
     function getShortcutContainerId(slot) {
       return state.runtime.shortcutRuntime.containerIdBySlot[slot] || "";
@@ -24,29 +26,29 @@ export function createShortcutManager(deps) {
 
       const desiredDescriptions = new Map();
       [
-        Shared.OPEN_CURRENT_CONTAINER_TAB_COMMAND,
-        Shared.GO_ONE_TAB_LEFT_COMMAND,
-        Shared.GO_ONE_TAB_RIGHT_COMMAND,
-        Shared.MOVE_TAB_LEFT_COMMAND,
-        Shared.MOVE_TAB_RIGHT_COMMAND,
-        Shared.TOGGLE_TAB_PINNED_COMMAND,
+        Shortcut.OPEN_CURRENT_CONTAINER_TAB_COMMAND,
+        Shortcut.GO_ONE_TAB_LEFT_COMMAND,
+        Shortcut.GO_ONE_TAB_RIGHT_COMMAND,
+        Shortcut.MOVE_TAB_LEFT_COMMAND,
+        Shortcut.MOVE_TAB_RIGHT_COMMAND,
+        Shortcut.TOGGLE_TAB_PINNED_COMMAND,
       ].forEach((commandName) => {
-        const description = Shared.getFixedShortcutCommandDescription(commandName);
+        const description = Shortcut.getFixedShortcutCommandDescription(commandName);
         if (description) {
           desiredDescriptions.set(commandName, description);
         }
       });
 
-      for (let slot = 0; slot < Shared.SHORTCUT_SLOT_COUNT; slot += 1) {
+      for (let slot = 0; slot < Shortcut.SHORTCUT_SLOT_COUNT; slot += 1) {
         const containerId = getShortcutContainerId(slot);
         const descriptions = getSlotDescriptions(slot, containerId);
 
         desiredDescriptions.set(
-          Shared.getOpenContainerSlotCommandName(slot),
+          Shortcut.getOpenContainerSlotCommandName(slot),
           descriptions.open,
         );
         desiredDescriptions.set(
-          Shared.getReopenContainerSlotCommandName(slot),
+          Shortcut.getReopenContainerSlotCommandName(slot),
           descriptions.reopen,
         );
       }
@@ -88,43 +90,43 @@ export function createShortcutManager(deps) {
     }
 
     async function handleCommand(commandName) {
-      if (commandName === Shared.OPEN_CURRENT_CONTAINER_TAB_COMMAND) {
+      if (commandName === Shortcut.OPEN_CURRENT_CONTAINER_TAB_COMMAND) {
         await tabActions.openCurrentContainerTab();
         return;
       }
 
-      if (commandName === Shared.GO_ONE_TAB_LEFT_COMMAND) {
+      if (commandName === Shortcut.GO_ONE_TAB_LEFT_COMMAND) {
         await tabActions.goOneTabLeft();
         return;
       }
 
-      if (commandName === Shared.GO_ONE_TAB_RIGHT_COMMAND) {
+      if (commandName === Shortcut.GO_ONE_TAB_RIGHT_COMMAND) {
         await tabActions.goOneTabRight();
         return;
       }
 
-      if (commandName === Shared.MOVE_TAB_LEFT_COMMAND) {
+      if (commandName === Shortcut.MOVE_TAB_LEFT_COMMAND) {
         await tabActions.moveTabLeft();
         return;
       }
 
-      if (commandName === Shared.MOVE_TAB_RIGHT_COMMAND) {
+      if (commandName === Shortcut.MOVE_TAB_RIGHT_COMMAND) {
         await tabActions.moveTabRight();
         return;
       }
 
-      if (commandName === Shared.TOGGLE_TAB_PINNED_COMMAND) {
+      if (commandName === Shortcut.TOGGLE_TAB_PINNED_COMMAND) {
         await tabActions.toggleTabPinned();
         return;
       }
 
-      if (Shared.isOpenContainerSlotCommand(commandName)) {
-        await openContainerSlot(Shared.getSlotNumberFromCommandName(commandName));
+      if (Shortcut.isOpenContainerSlotCommand(commandName)) {
+        await openContainerSlot(Shortcut.getSlotNumberFromCommandName(commandName));
         return;
       }
 
-      if (Shared.isReopenContainerSlotCommand(commandName)) {
-        await reopenContainerSlot(Shared.getSlotNumberFromCommandName(commandName));
+      if (Shortcut.isReopenContainerSlotCommand(commandName)) {
+        await reopenContainerSlot(Shortcut.getSlotNumberFromCommandName(commandName));
       }
     }
 

@@ -1,4 +1,5 @@
 import Shared from "../utils/shared.js";
+import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
   const FORMAT_KIND = "firefox-privacy-containers-config";
   const FORMAT_VERSION = 2;
   const INSTANCE_KEY = "privacyContainersTransferInstanceId";
@@ -131,7 +132,7 @@ import Shared from "../utils/shared.js";
       ...Object.keys(validation.config.containerSettings),
       ...validation.config.hostRules.flatMap((rule) => rule.exceptions),
     ]);
-    referencedIds.delete(Shared.FIREFOX_DEFAULT_CONTAINER);
+    referencedIds.delete(FIREFOX_DEFAULT_CONTAINER);
     const missingReference = Array.from(referencedIds).find(
       (cookieStoreId) => !sourceIds.has(cookieStoreId),
     );
@@ -345,7 +346,7 @@ import Shared from "../utils/shared.js";
   }
 
   function remapContainerId(cookieStoreId, containerIdMap) {
-    if (cookieStoreId === Shared.FIREFOX_DEFAULT_CONTAINER) {
+    if (cookieStoreId === FIREFOX_DEFAULT_CONTAINER) {
       return cookieStoreId;
     }
     const mapped = containerIdMap.get(cookieStoreId);

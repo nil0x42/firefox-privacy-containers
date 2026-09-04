@@ -1,4 +1,4 @@
-import Shared from "../utils/shared.js";
+import { getActionableTabValidation } from "../domain/tabs.js";
 import * as CookieActions from "./cookies.js";
 
 const WAND_ICON_SVG =
@@ -83,7 +83,7 @@ const TAB_ACTIONS = [
     description: "Delete cookies for the active page in its container store.",
     help:
       "Clears cookies matched from the active page URL in the current cookie store. It is not a full multi-origin browser cleanup.",
-    run: (tab) => CookieActions.removeTabCookies(browser, Shared, tab),
+    run: (tab) => CookieActions.removeTabCookies(browser, tab),
     success: () => "Cookies cleared",
   },
   {
@@ -95,7 +95,7 @@ const TAB_ACTIONS = [
       "Combines top-level local/session storage cleanup with cookie removal for the active page URL and cookie store.",
     run: async (tab) => {
       await executeOnTab(tab, clearAllStorageOnPage);
-      await CookieActions.removeTabCookies(browser, Shared, tab);
+      await CookieActions.removeTabCookies(browser, tab);
     },
     success: () => "Local storage, session storage and cookies cleared",
   },
@@ -148,7 +148,7 @@ async function getActiveBrowserTab() {
     currentWindow: true,
   });
 
-  const validation = Shared.getActionableTabValidation(
+  const validation = getActionableTabValidation(
     tab,
     browser.runtime.getURL(""),
   );

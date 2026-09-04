@@ -1,15 +1,20 @@
-  async function getTabCookies(browserApi, Shared, tab) {
+import {
+  buildCookieQueryDetails,
+  buildCookieRemovalDetails,
+} from "../domain/cookies.js";
+
+  async function getTabCookies(browserApi, tab) {
     return browserApi.cookies.getAll(
-      Shared.buildCookieQueryDetails(tab, true),
+      buildCookieQueryDetails(tab, true),
     );
   }
 
-  async function removeTabCookies(browserApi, Shared, tab) {
-    const cookies = await getTabCookies(browserApi, Shared, tab);
+  async function removeTabCookies(browserApi, tab) {
+    const cookies = await getTabCookies(browserApi, tab);
     const results = await Promise.allSettled(
       cookies.map((cookie) =>
         browserApi.cookies.remove(
-          Shared.buildCookieRemovalDetails(cookie, tab.cookieStoreId),
+          buildCookieRemovalDetails(cookie, tab.cookieStoreId),
         ),
       ),
     );

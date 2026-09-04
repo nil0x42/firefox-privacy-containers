@@ -1,20 +1,53 @@
+import {
+  FIREFOX_DEFAULT_CONTAINER,
+  createContainerLookup,
+  getContainerIdForSlot,
+  getContainerSlot,
+  getContainerSlots,
+  getContainerTechnicalLabel,
+  getDuplicateLiveContainerGroups,
+  normalizeContainerIdentityName,
+  normalizeContainerName,
+} from "../domain/containers.js";
+import {
+  buildCookieQueryDetails,
+  buildCookieRemovalDetails,
+  buildCookieRemovalUrl,
+} from "../domain/cookies.js";
+import {
+  GO_ONE_TAB_LEFT_COMMAND,
+  GO_ONE_TAB_RIGHT_COMMAND,
+  MOVE_TAB_LEFT_COMMAND,
+  MOVE_TAB_RIGHT_COMMAND,
+  OPEN_CONTAINER_SLOT_COMMAND_PREFIX,
+  OPEN_CURRENT_CONTAINER_TAB_COMMAND,
+  REOPEN_CONTAINER_SLOT_COMMAND_PREFIX,
+  SHORTCUT_SLOT_COUNT,
+  TOGGLE_TAB_PINNED_COMMAND,
+  captureShortcutFromEventData,
+  getFixedShortcutCommandDescription,
+  getOpenContainerSlotCommandName,
+  getReopenContainerSlotCommandName,
+  getShortcutActivationIssue,
+  getSlotNumberFromCommandName,
+  isOpenContainerSlotCommand,
+  isReopenContainerSlotCommand,
+  normalizeShortcutKey,
+} from "../domain/shortcuts.js";
+import { clone, normalizeBoolean, normalizeText } from "../domain/values.js";
+import {
+  BLOCKED_REOPEN_PREFIXES,
+  canReopenTabUrl,
+  getActionableTabValidation,
+  getReopenableTabValidation,
+  getTabPlacementValidation,
+  isActionableTabUrl,
+  isExtensionTabUrl,
+} from "../domain/tabs.js";
+
   const CONFIG_KEY = "config";
   const CONFIG_SCHEMA_VERSION = 4;
-  const FIREFOX_DEFAULT_CONTAINER = "firefox-default";
-  const SHORTCUT_SLOT_COUNT = 30;
-  const OPEN_CURRENT_CONTAINER_TAB_COMMAND = "open-current-container-tab";
-  const GO_ONE_TAB_LEFT_COMMAND = "go-one-tab-left";
-  const GO_ONE_TAB_RIGHT_COMMAND = "go-one-tab-right";
-  const MOVE_TAB_LEFT_COMMAND = "move-tab-left";
-  const MOVE_TAB_RIGHT_COMMAND = "move-tab-right";
-  const TOGGLE_TAB_PINNED_COMMAND = "pin-unpin-tab";
-  const OPEN_CONTAINER_SLOT_COMMAND_PREFIX = "open-container-slot-";
-  const REOPEN_CONTAINER_SLOT_COMMAND_PREFIX =
-    "reopen-current-tab-in-container-slot-";
-
   const REQUEST_PROTOCOLS = new Set(["http:", "https:", "ws:", "wss:"]);
-  const ACTIONABLE_TAB_PROTOCOLS = new Set(["http:", "https:"]);
-  const REOPENABLE_PROTOCOLS = new Set(["http:", "https:"]);
   const REQUEST_URL_PATTERNS = ["<all_urls>"];
   const NETWORK_REQUEST_URL_PATTERNS = [
     "http://*/*",
@@ -68,14 +101,6 @@
   });
   const PROXY_TYPES = Object.freeze(Object.keys(PROXY_TYPE_POLICIES));
   const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-  const BLOCKED_REOPEN_PREFIXES = [
-    "about:",
-    "moz-extension:",
-    "chrome:",
-    "resource:",
-    "file:",
-    "view-source:",
-  ];
   const HOST_RULE_MODES = ["blacklist", "whitelist"];
   const FIREFOX_TO_PWNFOX_COLORS = {
     blue: "blue",
@@ -128,55 +153,6 @@
     "versioncheck-bg.addons.mozilla.org",
     "services.addons.mozilla.org",
   ];
-  function clone(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function normalizeBoolean(value, fallback) {
-    if (typeof value === "boolean") {
-      return value;
-    }
-
-    if (value === "true") {
-      return true;
-    }
-
-    if (value === "false") {
-      return false;
-    }
-
-    return fallback;
-  }
-
-  function normalizeText(value) {
-    if (value == null) {
-      return "";
-    }
-
-    return String(value).trim();
-  }
-
-  function normalizeContainerName(value) {
-    return normalizeText(value);
-  }
-
-  function normalizeContainerIdentityName(value) {
-    return normalizeContainerName(value).toLowerCase();
-  }
-
-  function getContainerTechnicalLabel(cookieStoreId) {
-    const normalized = normalizeText(cookieStoreId);
-    if (!normalized) {
-      return "";
-    }
-
-    if (normalized === FIREFOX_DEFAULT_CONTAINER) {
-      return "default";
-    }
-
-    return normalized.replace(/^firefox-/, "");
-  }
-
   function normalizeHostRuleName(value) {
     return normalizeText(value);
   }
@@ -891,156 +867,6 @@
     };
   }
 
-  function createContainerLookup(containers) {
-    const byId = {};
-
-    (Array.isArray(containers) ? containers : []).forEach((container) => {
-      const cookieStoreId = normalizeText(container && container.cookieStoreId);
-      if (!cookieStoreId) {
-        return;
-      }
-
-      byId[cookieStoreId] = {
-        cookieStoreId,
-        name:
-          normalizeContainerName(container && container.name) || cookieStoreId,
-        icon: normalizeText(container && container.icon),
-        iconUrl: normalizeText(container && container.iconUrl),
-        color: normalizeText(container && container.color),
-      };
-    });
-
-    return byId;
-  }
-
-  function getContainerSlots(containers) {
-    const customContainers = Array.isArray(containers) ? containers : [];
-    return [
-      {
-        slot: 0,
-        cookieStoreId: FIREFOX_DEFAULT_CONTAINER,
-        name: "Default container",
-        icon: "default",
-        iconUrl: "",
-        color: "",
-        isDefault: true,
-        supportsShortcuts: true,
-      },
-      ...customContainers.map((container, index) => ({
-        slot: index + 1,
-        cookieStoreId: normalizeText(container.cookieStoreId),
-        name: normalizeContainerName(container.name) || `Container ${index + 1}`,
-        icon: normalizeText(container.icon),
-        iconUrl: normalizeText(container.iconUrl),
-        color: normalizeText(container.color),
-        isDefault: false,
-        supportsShortcuts: index + 1 < SHORTCUT_SLOT_COUNT,
-      })),
-    ];
-  }
-
-  function getContainerSlot(containers, slot) {
-    const slotNumber = Number(slot);
-    if (!Number.isInteger(slotNumber) || slotNumber < 0) {
-      return null;
-    }
-
-    return getContainerSlots(containers).find((entry) => entry.slot === slotNumber) || null;
-  }
-
-  function getContainerIdForSlot(containers, slot) {
-    return getContainerSlot(containers, slot)?.cookieStoreId || "";
-  }
-
-  function getDuplicateLiveContainerGroups(containers) {
-    const groupsByName = new Map();
-
-    getContainerSlots(containers).forEach((slotEntry) => {
-      const normalizedName = normalizeContainerIdentityName(slotEntry.name);
-      if (!normalizedName) {
-        return;
-      }
-
-      const group = groupsByName.get(normalizedName) || [];
-      group.push({
-        slot: slotEntry.slot,
-        cookieStoreId: slotEntry.cookieStoreId,
-        technicalLabel: getContainerTechnicalLabel(slotEntry.cookieStoreId),
-        name: slotEntry.name,
-        icon: slotEntry.icon,
-        iconUrl: slotEntry.iconUrl,
-        color: slotEntry.color,
-        isDefault: Boolean(slotEntry.isDefault),
-      });
-      groupsByName.set(normalizedName, group);
-    });
-
-    return Array.from(groupsByName.entries())
-      .filter(([, containersWithName]) => containersWithName.length > 1)
-      .map(([normalizedName, containersWithName]) => ({
-        normalizedName,
-        name: containersWithName[0].name,
-        count: containersWithName.length,
-        containers: containersWithName,
-      }));
-  }
-
-  function getOpenContainerSlotCommandName(slot) {
-    return `${OPEN_CONTAINER_SLOT_COMMAND_PREFIX}${slot}`;
-  }
-
-  function getReopenContainerSlotCommandName(slot) {
-    return `${REOPEN_CONTAINER_SLOT_COMMAND_PREFIX}${slot}`;
-  }
-
-  function getFixedShortcutCommandDescription(commandName) {
-    if (commandName === OPEN_CURRENT_CONTAINER_TAB_COMMAND) {
-      return "Open a new tab in the current container";
-    }
-
-    if (commandName === GO_ONE_TAB_LEFT_COMMAND) {
-      return "Go one tab to the left";
-    }
-
-    if (commandName === GO_ONE_TAB_RIGHT_COMMAND) {
-      return "Go one tab to the right";
-    }
-
-    if (commandName === MOVE_TAB_LEFT_COMMAND) {
-      return "Move tab left";
-    }
-
-    if (commandName === MOVE_TAB_RIGHT_COMMAND) {
-      return "Move tab right";
-    }
-
-    if (commandName === TOGGLE_TAB_PINNED_COMMAND) {
-      return "Pin/Unpin tab";
-    }
-
-    return "";
-  }
-
-  function getSlotNumberFromCommandName(commandName) {
-    if (commandName.startsWith(OPEN_CONTAINER_SLOT_COMMAND_PREFIX)) {
-      return commandName.slice(OPEN_CONTAINER_SLOT_COMMAND_PREFIX.length);
-    }
-
-    if (commandName.startsWith(REOPEN_CONTAINER_SLOT_COMMAND_PREFIX)) {
-      return commandName.slice(REOPEN_CONTAINER_SLOT_COMMAND_PREFIX.length);
-    }
-
-    return "";
-  }
-
-  function isOpenContainerSlotCommand(commandName) {
-    return commandName.startsWith(OPEN_CONTAINER_SLOT_COMMAND_PREFIX);
-  }
-
-  function isReopenContainerSlotCommand(commandName) {
-    return commandName.startsWith(REOPEN_CONTAINER_SLOT_COMMAND_PREFIX);
-  }
-
   function getPwnFoxColorValue(firefoxColor) {
     return FIREFOX_TO_PWNFOX_COLORS[normalizeText(firefoxColor)] || "";
   }
@@ -1215,198 +1041,6 @@
         : false,
       url: normalizeText(requestDetails && requestDetails.url),
     };
-  }
-
-  function isActionableTabUrl(url) {
-    const value = normalizeText(url);
-    if (!value) {
-      return false;
-    }
-
-    try {
-      const parsed = new URL(value);
-      return ACTIONABLE_TAB_PROTOCOLS.has(parsed.protocol);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function isExtensionTabUrl(url, extensionOrigin) {
-    const value = normalizeText(url);
-    const origin = normalizeText(extensionOrigin);
-    return Boolean(value && origin && value.startsWith(origin));
-  }
-
-  function getActionableTabValidation(tab, extensionOrigin) {
-    if (!tab || !tab.active) {
-      return {
-        valid: false,
-        reason: "No active browser tab found in the current window",
-      };
-    }
-
-    if (isExtensionTabUrl(tab.url, extensionOrigin)) {
-      return {
-        valid: false,
-        reason: "The active tab is this extension page",
-      };
-    }
-
-    if (!isActionableTabUrl(tab.url)) {
-      return {
-        valid: false,
-        reason: "The active tab is not an http or https page",
-      };
-    }
-
-    return {
-      valid: true,
-      reason: "",
-    };
-  }
-
-  function getTabPlacementValidation(tab) {
-    if (!tab || !tab.active) {
-      return {
-        valid: false,
-        reason: "No active browser tab found in the current window",
-      };
-    }
-
-    return {
-      valid: true,
-      reason: "",
-    };
-  }
-
-  function getReopenableTabValidation(tab, extensionOrigin) {
-    const actionable = getActionableTabValidation(tab, extensionOrigin);
-    if (!actionable.valid) {
-      return actionable;
-    }
-
-    if (!canReopenTabUrl(tab.url)) {
-      return {
-        valid: false,
-        reason: "The active tab URL cannot be reopened in another container",
-      };
-    }
-
-    return {
-      valid: true,
-      reason: "",
-    };
-  }
-
-  function normalizeShortcutKey(eventData) {
-    const source = eventData && typeof eventData === "object" ? eventData : {};
-    const key = normalizeText(source.key);
-    const code = normalizeText(source.code);
-    const ignoredKeys = new Set(["Control", "Shift", "Alt", "Meta"]);
-
-    if (ignoredKeys.has(key)) {
-      return "";
-    }
-
-    if (code === "Space") {
-      return "Space";
-    }
-
-    if (/^Key[A-Z]$/.test(code)) {
-      return code.slice(3);
-    }
-
-    if (/^Digit[0-9]$/.test(code)) {
-      return code.slice(5);
-    }
-
-    if (/^F\d{1,2}$/.test(key)) {
-      return key.toUpperCase();
-    }
-
-    const codeMap = {
-      ArrowUp: "Up",
-      ArrowDown: "Down",
-      ArrowLeft: "Left",
-      ArrowRight: "Right",
-      Comma: "Comma",
-      Period: "Period",
-      Home: "Home",
-      End: "End",
-      PageUp: "PageUp",
-      PageDown: "PageDown",
-      Insert: "Insert",
-      Delete: "Delete",
-    };
-
-    if (codeMap[code]) {
-      return codeMap[code];
-    }
-
-    const keyMap = {
-      ArrowUp: "Up",
-      ArrowDown: "Down",
-      ArrowLeft: "Left",
-      ArrowRight: "Right",
-      Home: "Home",
-      End: "End",
-      PageUp: "PageUp",
-      PageDown: "PageDown",
-      Insert: "Insert",
-      Delete: "Delete",
-    };
-
-    if (keyMap[key]) {
-      return keyMap[key];
-    }
-
-    if (key.length === 1) {
-      const upper = key.toUpperCase();
-      if (/^[A-Z0-9]$/.test(upper)) {
-        return upper;
-      }
-    }
-
-    return "";
-  }
-
-  function captureShortcutFromEventData(eventData) {
-    const source = eventData && typeof eventData === "object" ? eventData : {};
-    const hasPrimaryModifier = Boolean(
-      source.ctrlKey || source.altKey || source.metaKey,
-    );
-    const key = normalizeShortcutKey(source);
-    if (!hasPrimaryModifier || !key) {
-      return "";
-    }
-
-    const parts = [];
-    if (source.ctrlKey) {
-      parts.push("Ctrl");
-    }
-    if (source.altKey) {
-      parts.push("Alt");
-    }
-    if (source.metaKey) {
-      parts.push("Command");
-    }
-    if (source.shiftKey) {
-      parts.push("Shift");
-    }
-
-    parts.push(key);
-    return parts.join("+");
-  }
-
-  function getShortcutActivationIssue(requestedShortcut, activeShortcut) {
-    const requested = normalizeText(requestedShortcut);
-    const active = normalizeText(activeShortcut);
-
-    if (!requested || requested === active) {
-      return "";
-    }
-
-    return `Firefox did not activate "${requested}". It likely conflicts with the browser or another add-on.`;
   }
 
   function hostMatchesNormalizedRule(host, rule) {
@@ -2182,70 +1816,6 @@
     );
   }
 
-  function buildCookieRemovalUrl(cookie) {
-    const domain = normalizeText(cookie && cookie.domain).replace(/^\./, "");
-    if (!domain) {
-      return "";
-    }
-
-    const host =
-      domain.includes(":") &&
-      !domain.startsWith("[") &&
-      !domain.endsWith("]")
-        ? `[${domain}]`
-        : domain;
-    const path = normalizeText(cookie && cookie.path) || "/";
-    return `${cookie && cookie.secure ? "https" : "http"}://${host}${
-      path.startsWith("/") ? path : `/${path}`
-    }`;
-  }
-
-  function buildCookieQueryDetails(tab, includePartitioned) {
-    const details = {
-      url: normalizeText(tab && tab.url),
-      firstPartyDomain: null,
-    };
-    const storeId = normalizeText(tab && tab.cookieStoreId);
-    if (storeId) {
-      details.storeId = storeId;
-    }
-
-    if (includePartitioned) {
-      details.partitionKey = {};
-    }
-
-    return details;
-  }
-
-  function buildCookieRemovalDetails(cookie, storeId) {
-    const details = {
-      url: buildCookieRemovalUrl(cookie),
-      name: normalizeText(cookie && cookie.name),
-    };
-
-    const normalizedStoreId = normalizeText(storeId);
-    if (normalizedStoreId) {
-      details.storeId = normalizedStoreId;
-    }
-
-    if (
-      cookie &&
-      Object.prototype.hasOwnProperty.call(cookie, "firstPartyDomain")
-    ) {
-      details.firstPartyDomain = cookie.firstPartyDomain;
-    }
-
-    if (
-      cookie &&
-      cookie.partitionKey &&
-      typeof cookie.partitionKey === "object"
-    ) {
-      details.partitionKey = clone(cookie.partitionKey);
-    }
-
-    return details;
-  }
-
   function compileProxyPlan(proxy) {
     if (!isUsableProxy(proxy)) {
       return null;
@@ -2592,25 +2162,6 @@
       missingHostRuleRefs: getHostRuleMissingContainerRefs(config, containers),
       ambiguousHostRuleRefs: getHostRuleAmbiguousContainerRefs(config, containers),
     };
-  }
-
-  function canReopenTabUrl(url) {
-    const value = normalizeText(url);
-    if (!value) {
-      return false;
-    }
-
-    const lowerValue = value.toLowerCase();
-    if (BLOCKED_REOPEN_PREFIXES.some((prefix) => lowerValue.startsWith(prefix))) {
-      return false;
-    }
-
-    try {
-      const parsed = new URL(value);
-      return REOPENABLE_PROTOCOLS.has(parsed.protocol);
-    } catch (_) {
-      return false;
-    }
   }
 
   function createConfigBundle(config, meta) {

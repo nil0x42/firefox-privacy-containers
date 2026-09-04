@@ -1,5 +1,11 @@
+import {
+  FIREFOX_DEFAULT_CONTAINER,
+  getContainerTechnicalLabel,
+  getDuplicateLiveContainerGroups,
+} from "../domain/containers.js";
+
 export function createContainerCache(deps) {
-    const { state, browser, Shared } = deps;
+    const { state, browser } = deps;
 
     function setContainerCache(containers) {
       state.containers = containers;
@@ -63,7 +69,7 @@ export function createContainerCache(deps) {
         return "unassigned";
       }
 
-      if (cookieStoreId === Shared.FIREFOX_DEFAULT_CONTAINER) {
+      if (cookieStoreId === FIREFOX_DEFAULT_CONTAINER) {
         return "Default container";
       }
 
@@ -72,11 +78,11 @@ export function createContainerCache(deps) {
 
     function getContainerDescriptor(cookieStoreId) {
       const effectiveCookieStoreId =
-        cookieStoreId || Shared.FIREFOX_DEFAULT_CONTAINER;
+        cookieStoreId || FIREFOX_DEFAULT_CONTAINER;
 
-      if (effectiveCookieStoreId === Shared.FIREFOX_DEFAULT_CONTAINER) {
+      if (effectiveCookieStoreId === FIREFOX_DEFAULT_CONTAINER) {
         return {
-          cookieStoreId: Shared.FIREFOX_DEFAULT_CONTAINER,
+          cookieStoreId: FIREFOX_DEFAULT_CONTAINER,
           name: "Default container",
           color: "",
           iconUrl: "",
@@ -106,14 +112,14 @@ export function createContainerCache(deps) {
 
     function isContainerAvailable(cookieStoreId) {
       return (
-        cookieStoreId === Shared.FIREFOX_DEFAULT_CONTAINER ||
+        cookieStoreId === FIREFOX_DEFAULT_CONTAINER ||
         Boolean(getContainerMeta(cookieStoreId))
       );
     }
 
     function getAmbiguousContainerIdSet() {
       return new Set(
-        Shared.getDuplicateLiveContainerGroups(state.containers).flatMap((entry) =>
+        getDuplicateLiveContainerGroups(state.containers).flatMap((entry) =>
           entry.containers.map((container) => container.cookieStoreId),
         ),
       );
@@ -127,7 +133,7 @@ export function createContainerCache(deps) {
       return {
         ...descriptor,
         ambiguous: ambiguousContainerIds.has(descriptor.cookieStoreId),
-        technicalLabel: Shared.getContainerTechnicalLabel(descriptor.cookieStoreId),
+        technicalLabel: getContainerTechnicalLabel(descriptor.cookieStoreId),
       };
     }
 

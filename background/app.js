@@ -66,7 +66,6 @@ export function createBackgroundApp(deps = {}) {
 
   const tabIndex = createTabIndex({ Shared: sharedApi, state });
   const containerCache = createContainerCache({
-    Shared: sharedApi,
     browser: browserApi,
     state,
   });
@@ -115,7 +114,6 @@ export function createBackgroundApp(deps = {}) {
     tabIndex,
   });
   const shortcuts = createShortcutManager({
-    Shared: sharedApi,
     browser: browserApi,
     containerCache,
     state,

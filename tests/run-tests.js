@@ -5264,7 +5264,7 @@ test("removes cookies once using their exact storage identity", async () => {
     cookieStoreId: "firefox-container-2",
   };
 
-  const result = await CookieActions.removeTabCookies(browserMock, Shared, tab);
+  const result = await CookieActions.removeTabCookies(browserMock, tab);
 
   assert.deepStrictEqual(result, { matchedCount: 2, removedCount: 2 });
   assert.deepStrictEqual(getAllCalls, [
@@ -5309,7 +5309,6 @@ test("reports null and rejected exact cookie removals without retrying", async (
   await assert.rejects(
     CookieActions.removeTabCookies(
       browserMock,
-      Shared,
       { url: "https://example.com", cookieStoreId: "firefox-container-2" },
     ),
     /Removed 1 cookie, but failed to remove 2 cookies\./,
