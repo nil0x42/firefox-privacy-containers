@@ -1,7 +1,4 @@
-(function (global) {
-  const Shared =
-    global.PrivacyContainersShared ||
-    (typeof require === "function" ? require("../utils/shared.js") : null);
+import Shared from "../utils/shared.js";
   const FORMAT_KIND = "firefox-privacy-containers-config";
   const FORMAT_VERSION = 1;
   const INSTANCE_KEY = "privacyContainersTransferInstanceId";
@@ -413,8 +410,4 @@
     shortcutsMatch,
   };
 
-  global.PrivacyContainersConfigTransfer = api;
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = api;
-  }
-})(typeof globalThis !== "undefined" ? globalThis : this);
+export default api;

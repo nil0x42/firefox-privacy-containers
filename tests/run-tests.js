@@ -1,33 +1,26 @@
-const assert = require("assert");
-const fs = require("fs");
-const Shared = require("../utils/shared.js");
-const ConfigTransfer = require("../options/config-transfer.js");
-const CookieActions = require("../popup/cookies.js");
-const IdentityChoices = require("../options/contextual-identities.js");
-const path = require("path");
-let createBackgroundApp;
-let createShortcutManager;
-let createBlockedPageStore;
-let createTabIndex;
-let createTabActions;
-let createRequestHandlers;
-let createRequestContextCache;
-let createRuntimeManager;
+import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import Shared from "../utils/shared.js";
+import ConfigTransfer from "../options/config-transfer.js";
+import * as CookieActions from "../popup/cookies.js";
+import IdentityChoices from "../options/contextual-identities.js";
+import * as OptionsApp from "../options/app.js";
+import { createBackgroundApp } from "../background/app.js";
+import { createShortcutManager } from "../background/shortcuts.js";
+import { createBlockedPageStore } from "../background/blocked-page-store.js";
+import { createTabIndex } from "../background/tab-index.js";
+import { createTabActions } from "../background/tab-actions.js";
+import { createRequestHandlers } from "../background/request-handlers.js";
+import { createRequestContextCache } from "../background/request-context-cache.js";
+import { createRuntimeManager } from "../background/runtime-manager.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const tests = [];
 
 const OPTIONS_CSS_PATH = path.join(__dirname, "..", "options", "app.css");
-
-async function loadBackgroundTestModules() {
-  ({ createBackgroundApp } = await import("../background/app.js"));
-  ({ createShortcutManager } = await import("../background/shortcuts.js"));
-  ({ createBlockedPageStore } = await import("../background/blocked-page-store.js"));
-  ({ createTabIndex } = await import("../background/tab-index.js"));
-  ({ createTabActions } = await import("../background/tab-actions.js"));
-  ({ createRequestHandlers } = await import("../background/request-handlers.js"));
-  ({ createRequestContextCache } = await import("../background/request-context-cache.js"));
-  ({ createRuntimeManager } = await import("../background/runtime-manager.js"));
-}
 
 function parseHexColor(value) {
   const normalized = value.replace("#", "");
@@ -94,10 +87,7 @@ function createLocalStorageMock(initial = {}) {
 }
 
 function loadOptionsAppTestModule() {
-  global.PrivacyContainersShared = Shared;
-  global.PrivacyContainersConfigTransfer = ConfigTransfer;
-  delete require.cache[require.resolve("../options/app.js")];
-  return require("../options/app.js");
+  return OptionsApp;
 }
 
 function createTabActionsBrowser(tabs) {
@@ -381,7 +371,7 @@ test("derives card motion colors from the active card context", () => {
   const {
     buildInsertKeyframes,
     buildReorderKeyframes,
-  } = require("../options/app.js");
+  } = OptionsApp;
   const previousWindow = global.window;
   global.window = {
     getComputedStyle() {
@@ -734,9 +724,7 @@ test("reports draft status for incomplete proxies and host rules", () => {
 });
 
 test("builds tab summaries from visible containers and activable entries", () => {
-  global.PrivacyContainersShared = Shared;
-  delete require.cache[require.resolve("../options/app.js")];
-  const { buildTabSummaries } = require("../options/app.js");
+  const { buildTabSummaries } = OptionsApp;
 
   try {
     const summaries = buildTabSummaries(
@@ -809,15 +797,11 @@ test("builds tab summaries from visible containers and activable entries", () =>
       },
     ]);
   } finally {
-    delete require.cache[require.resolve("../options/app.js")];
-    delete global.PrivacyContainersShared;
   }
 });
 
 test("shows the external-link preference warning only for applicable Host Rules", () => {
-  global.PrivacyContainersShared = Shared;
-  delete require.cache[require.resolve("../options/app.js")];
-  const { shouldShowExternalContainerGuessWarning } = require("../options/app.js");
+  const { shouldShowExternalContainerGuessWarning } = OptionsApp;
   const containers = [
     { cookieStoreId: "firefox-container-1" },
     { cookieStoreId: "firefox-container-2" },
@@ -915,15 +899,11 @@ test("shows the external-link preference warning only for applicable Host Rules"
       false,
     );
   } finally {
-    delete global.PrivacyContainersShared;
-    delete require.cache[require.resolve("../options/app.js")];
   }
 });
 
 test("maps the active tab to the header create action label", () => {
-  global.PrivacyContainersShared = Shared;
-  delete require.cache[require.resolve("../options/app.js")];
-  const { getHeaderPrimaryActionDescriptor } = require("../options/app.js");
+  const { getHeaderPrimaryActionDescriptor } = OptionsApp;
 
   try {
     assert.deepStrictEqual(getHeaderPrimaryActionDescriptor("containers"), {
@@ -939,15 +919,11 @@ test("maps the active tab to the header create action label", () => {
       label: "Create new host rule",
     });
   } finally {
-    delete require.cache[require.resolve("../options/app.js")];
-    delete global.PrivacyContainersShared;
   }
 });
 
 test("reports internal shortcut conflicts explicitly", () => {
-  global.PrivacyContainersShared = Shared;
-  delete require.cache[require.resolve("../options/app.js")];
-  const { getInternalShortcutConflictIssue } = require("../options/app.js");
+  const { getInternalShortcutConflictIssue } = OptionsApp;
 
   try {
     const commands = [
@@ -997,15 +973,11 @@ test("reports internal shortcut conflicts explicitly", () => {
       "",
     );
   } finally {
-    delete require.cache[require.resolve("../options/app.js")];
-    delete global.PrivacyContainersShared;
   }
 });
 
 test("builds internal shortcut conflict labels from slot assignments", () => {
-  global.PrivacyContainersShared = Shared;
-  delete require.cache[require.resolve("../options/app.js")];
-  const { getInternalShortcutConflictIssue } = require("../options/app.js");
+  const { getInternalShortcutConflictIssue } = OptionsApp;
 
   try {
     const commands = [
@@ -1031,15 +1003,11 @@ test("builds internal shortcut conflict labels from slot assignments", () => {
       'Shortcut "Ctrl+Alt+R" is already used by "Reopen the current tab in Work".',
     );
   } finally {
-    delete require.cache[require.resolve("../options/app.js")];
-    delete global.PrivacyContainersShared;
   }
 });
 
 test("builds readable internal shortcut conflict labels for fixed tab commands", () => {
-  global.PrivacyContainersShared = Shared;
-  delete require.cache[require.resolve("../options/app.js")];
-  const { getInternalShortcutConflictIssue } = require("../options/app.js");
+  const { getInternalShortcutConflictIssue } = OptionsApp;
 
   try {
     const conflictCases = [
@@ -1087,8 +1055,6 @@ test("builds readable internal shortcut conflict labels for fixed tab commands",
       );
     });
   } finally {
-    delete require.cache[require.resolve("../options/app.js")];
-    delete global.PrivacyContainersShared;
   }
 });
 
@@ -5118,7 +5084,6 @@ test("marks direct proxy plans that do not need per-request URL parsing", () => 
 });
 
 async function run() {
-  await loadBackgroundTestModules();
   for (const entry of tests) {
     try {
       await entry.fn();

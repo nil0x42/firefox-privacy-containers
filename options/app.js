@@ -1,6 +1,6 @@
-const Shared = globalThis.PrivacyContainersShared;
-const ConfigTransfer = globalThis.PrivacyContainersConfigTransfer;
-const IdentityChoices = globalThis.PrivacyContainersIdentityChoices;
+import Shared from "../utils/shared.js";
+import ConfigTransfer from "./config-transfer.js";
+import IdentityChoices from "./contextual-identities.js";
 
 const ICON_SVG_BY_NAME = {
   fingerprint:
@@ -6251,22 +6251,22 @@ async function main() {
   }
 }
 
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = {
-    buildInsertKeyframes,
-    buildReorderKeyframes,
-    buildTabSummaries,
-    getHeaderPrimaryActionDescriptor,
-    getInternalShortcutConflictIssue,
-    importShortcutSnapshot,
-    applySameProfileContainers,
-    cleanupImportTransaction,
-    recoverImportTransaction,
-    rollbackImportTransaction,
-    shouldShowExternalContainerGuessWarning,
-    withTransferLock,
-  };
-} else {
+export {
+  applySameProfileContainers,
+  buildInsertKeyframes,
+  buildReorderKeyframes,
+  buildTabSummaries,
+  cleanupImportTransaction,
+  getHeaderPrimaryActionDescriptor,
+  getInternalShortcutConflictIssue,
+  importShortcutSnapshot,
+  recoverImportTransaction,
+  rollbackImportTransaction,
+  shouldShowExternalContainerGuessWarning,
+  withTransferLock,
+};
+
+if (typeof document !== "undefined") {
   main().catch((error) => {
     setStatus(error.message, true);
   });

@@ -1,4 +1,3 @@
-(function () {
   function getParams() {
     const params = new URLSearchParams(window.location.search);
     return {
@@ -294,4 +293,3 @@
   init().catch((error) => {
     setError(error && error.message ? error.message : String(error));
   });
-})();

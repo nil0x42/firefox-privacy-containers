@@ -1,4 +1,3 @@
-(function (global) {
   const CONFIG_KEY = "config";
   const CONFIG_SCHEMA_VERSION = 3;
   const FIREFOX_DEFAULT_CONTAINER = "firefox-default";
@@ -2876,9 +2875,4 @@
     getReopenableTabValidation,
   };
 
-  global.PrivacyContainersShared = api;
-
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = api;
-  }
-})(typeof globalThis !== "undefined" ? globalThis : this);
+export default api;

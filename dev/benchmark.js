@@ -1,5 +1,5 @@
-const { performance } = require("perf_hooks");
-const Shared = require("../utils/shared.js");
+import { performance } from "node:perf_hooks";
+import Shared from "../utils/shared.js";
 
 const config = Shared.normalizeConfig({
   proxies: Array.from({ length: 20 }, (_, index) => ({

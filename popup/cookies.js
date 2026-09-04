@@ -1,4 +1,3 @@
-(function (global) {
   async function getTabCookies(browserApi, Shared, tab) {
     return browserApi.cookies.getAll(
       Shared.buildCookieQueryDetails(tab, true),
@@ -34,10 +33,4 @@
     };
   }
 
-  const api = { getTabCookies, removeTabCookies };
-  global.PrivacyContainersCookies = api;
-
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = api;
-  }
-})(typeof globalThis !== "undefined" ? globalThis : this);
+export { getTabCookies, removeTabCookies };

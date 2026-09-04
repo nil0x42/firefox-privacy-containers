@@ -1,4 +1,3 @@
-(function (global) {
   const FALLBACK_COLORS = Object.freeze([
     { color: "red", colorCode: "#d1242f" },
     { color: "orange", colorCode: "#f18f01" },
@@ -68,9 +67,5 @@
     FALLBACK_ICONS,
     getSupportedIdentityChoices,
   };
-  global.PrivacyContainersIdentityChoices = api;
-
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = api;
-  }
-})(typeof globalThis !== "undefined" ? globalThis : this);
+export default api;
+export { FALLBACK_COLORS, FALLBACK_ICONS, getSupportedIdentityChoices };

@@ -1,4 +1,4 @@
-import "../utils/shared.js";
+import Shared from "../utils/shared.js";
 import {
   BACKGROUND_WRITER_ID,
   BLOCKED_PAGE_ENTRY_TTL_MS,
@@ -25,7 +25,6 @@ import { createNetworkListenerManager } from "./network-listeners.js";
 import { createLifecycleController } from "./lifecycle.js";
 import { createEventBinder } from "./events.js";
 
-const Shared = globalThis.PrivacyContainersShared;
 const constants = Object.freeze({
   BACKGROUND_WRITER_ID,
   BLOCKED_PAGE_ENTRY_TTL_MS,
