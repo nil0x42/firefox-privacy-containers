@@ -1,5 +1,5 @@
   const CONFIG_KEY = "config";
-  const CONFIG_SCHEMA_VERSION = 3;
+  const CONFIG_SCHEMA_VERSION = 4;
   const FIREFOX_DEFAULT_CONTAINER = "firefox-default";
   const SHORTCUT_SLOT_COUNT = 30;
   const OPEN_CURRENT_CONTAINER_TAB_COMMAND = "open-current-container-tab";
@@ -815,22 +815,12 @@
     return result;
   }
 
-  function normalizeUiActiveTab(value) {
-    const normalized = normalizeText(value);
-    return ["containers", "proxies", "host-rules"].includes(normalized)
-      ? normalized
-      : "containers";
-  }
-
   function createDefaultConfig() {
     return {
       proxies: [],
       containerSettings: {},
       hostRules: [],
       globalHeaders: [],
-      ui: {
-        activeTab: "containers",
-      },
     };
   }
 
@@ -856,9 +846,6 @@
       containerSettings: normalizeContainerSettings(raw.containerSettings, proxyIds),
       hostRules: normalizeHostRules(raw.hostRules),
       globalHeaders: normalizeHeaderEntries(raw.globalHeaders, "global-header"),
-      ui: {
-        activeTab: normalizeUiActiveTab(raw.ui && raw.ui.activeTab),
-      },
     };
   }
 

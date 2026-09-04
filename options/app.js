@@ -5,6 +5,7 @@ import {
   getConfigBundle,
   saveConfigBundle,
 } from "./config-client.js";
+import * as OptionsUi from "../domain/ui-state.js";
 
 const ICON_SVG_BY_NAME = {
   fingerprint:
@@ -109,6 +110,7 @@ function createWriterId(prefix) {
 }
 
 const state = {
+  activeTab: "containers",
   colorChoices: [],
   commands: [],
   config: Shared.createDefaultConfig(),
@@ -2382,10 +2384,11 @@ async function insertConfigCollectionItem({
   const nextConfig = {
     ...state.config,
     [collection]: nextItems,
-    ui: activeTab
-      ? { ...state.config.ui, activeTab }
-      : state.config.ui,
   };
+  if (activeTab) {
+    state.activeTab = activeTab;
+    await OptionsUi.saveOptionsUi(browser, state);
+  }
 
   queuePendingCardInsert(collection, item.id, focusId, focusValue);
 
@@ -2577,12 +2580,13 @@ function markDraftDirty() {
 
 async function refreshState(options) {
   const preserveDraft = Boolean(options && options.preserveDraft);
-  const [bundle, containers, commands, identityChoices] =
+  const [bundle, containers, commands, identityChoices, uiState] =
     await Promise.all([
       getConfigBundle(),
       browser.contextualIdentities.query({}),
       browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
       IdentityChoices.getSupportedIdentityChoices(browser),
+      OptionsUi.loadOptionsUi(browser),
     ]);
 
   if (!preserveDraft || (!state.dirty && !state.saveInFlight)) {
@@ -2594,6 +2598,7 @@ async function refreshState(options) {
   state.commands = commands;
   state.colorChoices = identityChoices.colors;
   state.iconChoices = identityChoices.icons;
+  state.activeTab = uiState.activeTab;
 }
 
 async function refreshCommands() {
@@ -3283,7 +3288,6 @@ async function replaceContainersFromImport(imported, snapshot, shortcuts) {
       ConfigTransfer.remapConfig(
         imported.config,
         idMap,
-        snapshot.config.ui.activeTab,
       ),
     );
     committed = true;
@@ -3329,7 +3333,6 @@ async function importConfigurationDocument(imported) {
     await saveImportedConfig(
       ConfigTransfer.prepareUnlinkedConfig(
         imported.config,
-        snapshot.config.ui.activeTab,
       ),
     );
     const warnings = await finalizeImportedState();
@@ -3383,7 +3386,6 @@ async function importConfigurationDocument(imported) {
         ConfigTransfer.remapConfig(
           imported.config,
           containerIdMap,
-          snapshot.config.ui.activeTab,
         ),
       );
     } catch (error) {
@@ -3885,7 +3887,7 @@ async function updateCommandShortcut(commandName, shortcut, message) {
   return activeShortcut;
 }
 
-function getHeaderPrimaryActionDescriptor(activeTab = state.config.ui.activeTab) {
+function getHeaderPrimaryActionDescriptor(activeTab = state.activeTab) {
   switch (activeTab) {
     case "proxies":
       return {
@@ -3991,7 +3993,7 @@ function renderTabNav() {
     const button = document.createElement("button");
     button.type = "button";
     button.className =
-      state.config.ui.activeTab === item.id ? "tab-button active" : "tab-button";
+      state.activeTab === item.id ? "tab-button active" : "tab-button";
     button.setAttribute(
       "aria-label",
       item.draftCount
@@ -4021,10 +4023,9 @@ function renderTabNav() {
     copy.appendChild(meta);
     button.appendChild(copy);
     button.onclick = async () => {
-      state.config.ui.activeTab = item.id;
+      state.activeTab = item.id;
       try {
-        await persistConfigNow("", { silentStatus: true });
-        await refreshState();
+        await OptionsUi.saveOptionsUi(browser, state);
         renderShell();
         await renderActiveTabContent();
       } catch (error) {
@@ -6077,18 +6078,18 @@ async function renderActiveTabContent() {
   if (!layout) {
     return;
   }
-  layout.dataset.activeTab = state.config.ui.activeTab;
+  layout.dataset.activeTab = state.activeTab;
   layout.textContent = "";
   const containerIntegrity = Shared.getContainerIntegrityReport(
     state.config,
     state.containers,
   );
 
-  if (state.config.ui.activeTab === "containers") {
+  if (state.activeTab === "containers") {
     renderContainersTab(layout, containerIntegrity);
-  } else if (state.config.ui.activeTab === "proxies") {
+  } else if (state.activeTab === "proxies") {
     renderProxiesTab(layout, containerIntegrity);
-  } else if (state.config.ui.activeTab === "host-rules") {
+  } else if (state.activeTab === "host-rules") {
     renderHostRulesTab(layout, containerIntegrity);
   }
 

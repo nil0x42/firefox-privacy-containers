@@ -16,6 +16,11 @@ import { createRequestHandlers } from "../background/request-handlers.js";
 import { createRequestContextCache } from "../background/request-context-cache.js";
 import { createRuntimeManager } from "../background/runtime-manager.js";
 import { createConfigService } from "../background/config-service.js";
+import {
+  OPTIONS_UI_KEY,
+  loadOptionsUi,
+  saveOptionsUi,
+} from "../domain/ui-state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -87,6 +92,13 @@ function createLocalStorageMock(initial = {}) {
   return {
     values,
     async get(key) {
+      if (Array.isArray(key)) {
+        return Object.fromEntries(
+          key
+            .filter((entry) => Object.prototype.hasOwnProperty.call(values, entry))
+            .map((entry) => [entry, values[entry]]),
+        );
+      }
       return { [key]: values[key] };
     },
     async set(entries) {
@@ -1625,6 +1637,52 @@ test("serializes configuration writes and rejects stale revisions", async () => 
   assert.deepStrictEqual(applied, [1, 2]);
 });
 
+test("migrates the legacy active options tab before storing schema 4", async () => {
+  const legacy = {
+    meta: { schemaVersion: 3, revision: 7, writer: "options" },
+    config: {
+      ...Shared.createDefaultConfig(),
+      ui: { activeTab: "host-rules" },
+    },
+  };
+  const storage = createLocalStorageMock({ [Shared.CONFIG_KEY]: legacy });
+  const service = createConfigService({
+    Shared,
+    browser: { storage: { local: storage } },
+    writerId: "background",
+    async onChanged() {},
+  });
+
+  const bundle = await service.initialize();
+
+  assert.strictEqual(bundle.meta.schemaVersion, 4);
+  assert.strictEqual(bundle.config.ui, undefined);
+  assert.deepStrictEqual(storage.values[OPTIONS_UI_KEY], {
+    activeTab: "host-rules",
+  });
+  assert.strictEqual(storage.values[Shared.CONFIG_KEY].meta.schemaVersion, 4);
+});
+
+test("stores the active options tab independently from routing config", async () => {
+  const storage = createLocalStorageMock({
+    [Shared.CONFIG_KEY]: Shared.createConfigBundle(Shared.createDefaultConfig(), {
+      revision: 4,
+    }),
+  });
+  const browserMock = { storage: { local: storage } };
+
+  await saveOptionsUi(browserMock, { activeTab: "proxies" });
+
+  assert.deepStrictEqual(await loadOptionsUi(browserMock), {
+    activeTab: "proxies",
+  });
+  assert.strictEqual(storage.values[Shared.CONFIG_KEY].meta.revision, 4);
+  storage.values[OPTIONS_UI_KEY] = { activeTab: "unknown" };
+  assert.deepStrictEqual(await loadOptionsUi(browserMock), {
+    activeTab: "containers",
+  });
+});
+
 test("exports a versioned portable configuration including secrets and shortcuts", () => {
   const fixture = createTransferFixture();
 
@@ -2177,7 +2235,7 @@ test("remaps imported associations to live IDs while preserving Firefox Default"
   assert.ok(remapped.containerSettings[Shared.FIREFOX_DEFAULT_CONTAINER]);
   assert.strictEqual(remapped.containerSettings["firefox-container-1"], undefined);
   assert.deepStrictEqual(remapped.hostRules[0].exceptions, ["firefox-container-20"]);
-  assert.strictEqual(remapped.ui.activeTab, "containers");
+  assert.strictEqual(remapped.ui, undefined);
 });
 
 test("prepares a safe association-free import without discarding reusable config", () => {
@@ -2192,7 +2250,7 @@ test("prepares a safe association-free import without discarding reusable config
   assert.deepStrictEqual(unlinked.hostRules[0].exceptions, []);
   assert.deepStrictEqual(unlinked.proxies, fixture.document.config.proxies);
   assert.deepStrictEqual(unlinked.globalHeaders, fixture.document.config.globalHeaders);
-  assert.strictEqual(unlinked.ui.activeTab, "host-rules");
+  assert.strictEqual(unlinked.ui, undefined);
 });
 
 test("normalizes host rule cards and enabled flags", () => {

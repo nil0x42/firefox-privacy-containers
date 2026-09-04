@@ -1,3 +1,5 @@
+import { OPTIONS_UI_KEY, normalizeActiveTab } from "../domain/ui-state.js";
+
 export function createConfigService({ Shared, browser, writerId, onChanged }) {
   let currentBundle = null;
   let initialization = null;
@@ -12,9 +14,21 @@ export function createConfigService({ Shared, browser, writerId, onChanged }) {
   async function initialize() {
     if (!initialization) {
       initialization = (async () => {
-        const stored = (await browser.storage.local.get(Shared.CONFIG_KEY))[
-          Shared.CONFIG_KEY
-        ];
+        const values = await browser.storage.local.get([
+          Shared.CONFIG_KEY,
+          OPTIONS_UI_KEY,
+        ]);
+        const stored = values[Shared.CONFIG_KEY];
+        if (!values[OPTIONS_UI_KEY]) {
+          const legacyUi = stored?.config?.ui || stored?.ui;
+          if (legacyUi?.activeTab) {
+            await browser.storage.local.set({
+              [OPTIONS_UI_KEY]: {
+                activeTab: normalizeActiveTab(legacyUi.activeTab),
+              },
+            });
+          }
+        }
         const bundle = stored
           ? Shared.normalizeConfigBundle(stored)
           : Shared.createConfigBundle(Shared.createDefaultConfig(), {

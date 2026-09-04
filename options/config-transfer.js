@@ -1,6 +1,6 @@
 import Shared from "../utils/shared.js";
   const FORMAT_KIND = "firefox-privacy-containers-config";
-  const FORMAT_VERSION = 1;
+  const FORMAT_VERSION = 2;
   const INSTANCE_KEY = "privacyContainersTransferInstanceId";
   const TRANSACTION_KEY = "privacyContainersImportTransaction";
   const TRANSACTION_VERSION = 1;
@@ -32,8 +32,7 @@ import Shared from "../utils/shared.js";
     }
     if (
       !record(config.containerSettings) ||
-      Object.values(config.containerSettings).some((setting) => !record(setting)) ||
-      !record(config.ui)
+      Object.values(config.containerSettings).some((setting) => !record(setting))
     ) {
       throw new Error("The imported configuration structure is invalid.");
     }
@@ -86,7 +85,7 @@ import Shared from "../utils/shared.js";
     if (value.kind !== FORMAT_KIND) {
       throw new Error("This is not a Privacy Containers configuration file.");
     }
-    if (value.formatVersion !== FORMAT_VERSION) {
+    if (![1, FORMAT_VERSION].includes(value.formatVersion)) {
       const detail =
         Number.isInteger(value.formatVersion) && value.formatVersion > FORMAT_VERSION
           ? " It was created by a newer add-on version."
@@ -356,7 +355,7 @@ import Shared from "../utils/shared.js";
     return mapped;
   }
 
-  function remapConfig(config, containerIdMap, activeTab) {
+  function remapConfig(config, containerIdMap) {
     const normalized = Shared.normalizeConfig(config);
     return Shared.normalizeConfig({
       ...normalized,
@@ -372,11 +371,10 @@ import Shared from "../utils/shared.js";
           remapContainerId(cookieStoreId, containerIdMap),
         ),
       })),
-      ui: { activeTab },
     });
   }
 
-  function prepareUnlinkedConfig(config, activeTab) {
+  function prepareUnlinkedConfig(config) {
     const normalized = Shared.normalizeConfig(config);
     return Shared.normalizeConfig({
       ...normalized,
@@ -386,7 +384,6 @@ import Shared from "../utils/shared.js";
         enabled: false,
         exceptions: [],
       })),
-      ui: { activeTab },
     });
   }
 

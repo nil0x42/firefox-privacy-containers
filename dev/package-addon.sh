@@ -22,10 +22,11 @@ fi
 stage_dir=$(mktemp -d)
 trap 'rm -rf -- "$stage_dir"' EXIT
 
-mkdir -p "$stage_dir"/{background,blocked,options,popup,res,utils}
+mkdir -p "$stage_dir"/{background,blocked,domain,options,popup,res,utils}
 cp manifest.json LICENSE "$stage_dir"/
 cp background/*.js "$stage_dir/background/"
 cp blocked/* "$stage_dir/blocked/"
+cp domain/*.js "$stage_dir/domain/"
 cp options/* "$stage_dir/options/"
 cp popup/* "$stage_dir/popup/"
 cp res/* "$stage_dir/res/"
