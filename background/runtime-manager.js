@@ -79,28 +79,30 @@ export function createRuntimeManager(deps) {
 
     function refreshRuntimeParts(parts) {
       const partSet = new Set(Array.isArray(parts) ? parts : [parts]);
+      const nextRuntime = { ...state.runtime };
 
       if (partSet.has("proxy")) {
-        state.runtime.proxyRuntime = Shared.compileProxyRuntime(state.config);
+        nextRuntime.proxyRuntime = Shared.compileProxyRuntime(state.config);
       }
 
       if (partSet.has("headers")) {
-        state.runtime.headerRuntime = Shared.compileHeaderRuntime(
+        nextRuntime.headerRuntime = Shared.compileHeaderRuntime(
           state.config,
           state.containers,
         );
       }
 
       if (partSet.has("hostRules")) {
-        state.runtime.hostRuleRuntime = Shared.compileHostRuleRuntime(state.config);
+        nextRuntime.hostRuleRuntime = Shared.compileHostRuleRuntime(state.config);
       }
 
       if (partSet.has("shortcuts")) {
-        state.runtime.shortcutRuntime = Shared.compileShortcutRuntime(
+        nextRuntime.shortcutRuntime = Shared.compileShortcutRuntime(
           state.containers,
         );
       }
 
+      state.runtime = nextRuntime;
       syncNetworkListeners();
     }
 

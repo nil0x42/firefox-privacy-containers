@@ -37,7 +37,7 @@ export function createRequestHandlers(deps) {
       return context.cookieStoreId;
     }
 
-    function resolveProxyRoute(requestDetails) {
+    function resolveProxyRoute(requestDetails, runtime = state.runtime) {
       const cachedContext = requestContextCache.getRequestContext(requestDetails);
       const cookieStoreId = getRoutingCookieStoreId(
         requestDetails,
@@ -50,24 +50,18 @@ export function createRequestHandlers(deps) {
         cookieStoreId === cachedContext.cookieStoreId
           ? cachedContext
           : { ...cachedContext, cookieStoreId };
-      const assignment = Shared.resolveProxyAssignment(
-        state.config,
-        context.cookieStoreId,
-      );
-
-      if (assignment.status === "absent") {
-        return createDirectRoute(context);
-      }
-
-      const plan =
-        state.runtime.proxyRuntime.planByContainerId[context.cookieStoreId];
+      const proxyRuntime = runtime.proxyRuntime;
       if (
-        assignment.status !== "valid" ||
-        !plan ||
-        plan.proxyId !== assignment.proxyId ||
-        !plan.requestInfo
+        Object.prototype.hasOwnProperty.call(
+          proxyRuntime.invalidAssignmentByContainerId,
+          context.cookieStoreId,
+        )
       ) {
         return createBlockedRoute(context);
+      }
+      const plan = proxyRuntime.planByContainerId[context.cookieStoreId];
+      if (!plan) {
+        return createDirectRoute(context);
       }
 
       if (!plan.requiresRequestTarget) {
@@ -94,9 +88,9 @@ export function createRequestHandlers(deps) {
       return { kind: ROUTE_PROXY, context, plan };
     }
 
-    function safelyResolveProxyRoute(requestDetails) {
+    function safelyResolveProxyRoute(requestDetails, runtime = state.runtime) {
       try {
-        return resolveProxyRoute(requestDetails);
+        return resolveProxyRoute(requestDetails, runtime);
       } catch (error) {
         console.error(
           "Failed to resolve a proxy route; blocking the request",
@@ -185,10 +179,11 @@ export function createRequestHandlers(deps) {
     }
 
     function addHeaders(requestDetails) {
+      const runtime = state.runtime;
       const cookieStoreId = Shared.getEffectiveCookieStoreId(
         requestDetails.cookieStoreId,
       );
-      const plan = state.runtime.headerRuntime.planByContainerId[cookieStoreId];
+      const plan = runtime.headerRuntime.planByContainerId[cookieStoreId];
       if (!plan) {
         return {};
       }
@@ -227,10 +222,11 @@ export function createRequestHandlers(deps) {
         return {};
       }
 
+      const runtime = state.runtime;
       const cookieStoreId = Shared.getEffectiveCookieStoreId(
         details && details.cookieStoreId,
       );
-      const plan = state.runtime.proxyRuntime.planByContainerId[cookieStoreId];
+      const plan = runtime.proxyRuntime.planByContainerId[cookieStoreId];
       if (!plan || !plan.authCredentials) {
         return {};
       }
@@ -251,7 +247,8 @@ export function createRequestHandlers(deps) {
         };
       }
 
-      const route = safelyResolveProxyRoute(details);
+      const runtime = state.runtime;
+      const route = safelyResolveProxyRoute(details, runtime);
       const context = route.context;
       const proxyInfo = details && details.proxyInfo;
       const isAppliedRouteValid =
@@ -269,7 +266,7 @@ export function createRequestHandlers(deps) {
         };
       }
 
-      if (!state.runtime.hostRuleRuntime.hasAnyEnabledRules) {
+      if (!runtime.hostRuleRuntime.hasAnyEnabledRules) {
         return {};
       }
 
@@ -278,7 +275,7 @@ export function createRequestHandlers(deps) {
       }
 
       const decision = Shared.getHostRuleDecisionForNormalizedHost(
-        state.runtime.hostRuleRuntime,
+        runtime.hostRuleRuntime,
         context.normalizedHost,
         context.cookieStoreId,
       );

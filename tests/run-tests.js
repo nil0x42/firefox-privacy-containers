@@ -3742,6 +3742,39 @@ test("uses explicit direct routing only for unassigned or bypassed requests", ()
   }
 });
 
+test("routes from compiled proxy state without consulting raw config", () => {
+  const ctx = loadBackgroundModule();
+  const originalResolver = Shared.resolveProxyAssignment;
+
+  try {
+    ctx.background.setContainerCache([]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      proxies: [
+        { id: "proxy-1", type: "http", host: "127.0.0.1", port: 8080 },
+      ],
+      containerSettings: {
+        "firefox-container-1": { proxyId: "proxy-1" },
+      },
+    });
+    ctx.background.rebuildRuntime();
+    Shared.resolveProxyAssignment = () => {
+      throw new Error("raw configuration was consulted");
+    };
+
+    const result = ctx.background.setProxy({
+      url: "https://example.com/",
+      method: "GET",
+      cookieStoreId: "firefox-container-1",
+    });
+
+    assert.strictEqual(result[0].host, "127.0.0.1");
+    assert.strictEqual(result[0].port, 8080);
+  } finally {
+    Shared.resolveProxyAssignment = originalResolver;
+    ctx.cleanup();
+  }
+});
+
 test("cancels requests when Firefox did not apply the computed proxy route", () => {
   const ctx = loadBackgroundModule();
 
