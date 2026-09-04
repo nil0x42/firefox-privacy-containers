@@ -2,6 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const Shared = require("../utils/shared.js");
 const ConfigTransfer = require("../options/config-transfer.js");
+const CookieActions = require("../popup/cookies.js");
 const path = require("path");
 let createBackgroundApp;
 let createShortcutManager;
@@ -4900,6 +4901,96 @@ test("builds cookie removal details including first-party and partition metadata
       },
     },
   );
+});
+
+test("removes cookies once using their exact storage identity", async () => {
+  const cookies = [
+    {
+      domain: ".example.com",
+      path: "/",
+      secure: true,
+      name: "session",
+      firstPartyDomain: "",
+      partitionKey: { topLevelSite: "https://example.com" },
+    },
+    {
+      domain: ".example.com",
+      path: "/",
+      secure: true,
+      name: "session",
+      firstPartyDomain: "",
+    },
+  ];
+  const getAllCalls = [];
+  const removeCalls = [];
+  const browserMock = {
+    cookies: {
+      async getAll(details) {
+        getAllCalls.push(details);
+        return cookies;
+      },
+      async remove(details) {
+        removeCalls.push(details);
+        return { ...details };
+      },
+    },
+  };
+  const tab = {
+    url: "https://example.com/account",
+    cookieStoreId: "firefox-container-2",
+  };
+
+  const result = await CookieActions.removeTabCookies(browserMock, Shared, tab);
+
+  assert.deepStrictEqual(result, { matchedCount: 2, removedCount: 2 });
+  assert.deepStrictEqual(getAllCalls, [
+    {
+      url: tab.url,
+      firstPartyDomain: null,
+      storeId: tab.cookieStoreId,
+      partitionKey: {},
+    },
+  ]);
+  assert.strictEqual(removeCalls.length, 2);
+  assert.deepStrictEqual(removeCalls[0].partitionKey, cookies[0].partitionKey);
+  assert.strictEqual("partitionKey" in removeCalls[1], false);
+  assert.ok(removeCalls.every((details) => details.firstPartyDomain === ""));
+});
+
+test("reports null and rejected exact cookie removals without retrying", async () => {
+  const cookies = [
+    { domain: "example.com", path: "/", name: "missing" },
+    { domain: "example.com", path: "/", name: "rejected" },
+    { domain: "example.com", path: "/", name: "removed" },
+  ];
+  const removeCalls = [];
+  const browserMock = {
+    cookies: {
+      async getAll() {
+        return cookies;
+      },
+      async remove(details) {
+        removeCalls.push(details);
+        if (details.name === "missing") {
+          return null;
+        }
+        if (details.name === "rejected") {
+          throw new Error("rejected");
+        }
+        return details;
+      },
+    },
+  };
+
+  await assert.rejects(
+    CookieActions.removeTabCookies(
+      browserMock,
+      Shared,
+      { url: "https://example.com", cookieStoreId: "firefox-container-2" },
+    ),
+    /Removed 1 cookie, but failed to remove 2 cookies\./,
+  );
+  assert.strictEqual(removeCalls.length, cookies.length);
 });
 
 test("marks direct proxy plans that do not need per-request URL parsing", () => {

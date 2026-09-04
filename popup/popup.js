@@ -1,4 +1,5 @@
 const Shared = globalThis.PrivacyContainersShared;
+const CookieActions = globalThis.PrivacyContainersCookies;
 
 const WAND_ICON_SVG =
   '<svg viewBox="0 0 576 512" aria-hidden="true"><path d="M343 39.1C348.8 16.4 381.2 16.4 387 39.1L394.5 68.4C398.2 82.9 409.6 94.3 424.1 98L453.4 105.5C476.1 111.3 476.1 143.7 453.4 149.5L424.1 157C409.6 160.7 398.2 172.1 394.5 186.6L387 215.9C381.2 238.6 348.8 238.6 343 215.9L335.5 186.6C331.8 172.1 320.4 160.7 305.9 157L276.6 149.5C253.9 143.7 253.9 111.3 276.6 105.5L305.9 98C320.4 94.3 331.8 82.9 335.5 68.4L343 39.1zM496 0C504.8 0 512 7.2 512 16L512 64L560 64C568.8 64 576 71.2 576 80C576 88.8 568.8 96 560 96L512 96L512 144C512 152.8 504.8 160 496 160C487.2 160 480 152.8 480 144L480 96L432 96C423.2 96 416 88.8 416 80C416 71.2 423.2 64 432 64L480 64L480 16C480 7.2 487.2 0 496 0zM53.6 377.4L309.5 121.5C318.9 112.1 334.1 112.1 343.4 121.5L390.5 168.6C399.9 178 399.9 193.2 390.5 202.5L134.6 458.4C125.2 467.8 110 467.8 100.7 458.4L53.6 411.3C44.2 401.9 44.2 386.7 53.6 377.4zM19.7 445.3C31.7 433.3 51.1 433.3 63.1 445.3L66.7 448.9C78.7 460.9 78.7 480.3 66.7 492.3L50.3 508.7C42.1 516.9 30.4 521.4 18.8 520.9C8.4 520.4 0 512 0 501.6C-.5 490 4 478.3 12.2 470.1L28.6 453.7 19.7 445.3z" fill="currentColor"/></svg>';
@@ -82,7 +83,7 @@ const TAB_ACTIONS = [
     description: "Delete cookies for the active page in its container store.",
     help:
       "Clears cookies matched from the active page URL in the current cookie store. It is not a full multi-origin browser cleanup.",
-    run: (tab) => removeTabCookies(tab),
+    run: (tab) => CookieActions.removeTabCookies(browser, Shared, tab),
     success: () => "Cookies cleared",
   },
   {
@@ -94,7 +95,7 @@ const TAB_ACTIONS = [
       "Combines top-level local/session storage cleanup with cookie removal for the active page URL and cookie store.",
     run: async (tab) => {
       await executeOnTab(tab, clearAllStorageOnPage);
-      await removeTabCookies(tab);
+      await CookieActions.removeTabCookies(browser, Shared, tab);
     },
     success: () => "Local storage, session storage and cookies cleared",
   },
@@ -165,118 +166,6 @@ function executeOnTab(tab, fn) {
     },
     func: fn,
   });
-}
-
-function omitObjectField(object, key) {
-  const next = { ...object };
-  delete next[key];
-  return next;
-}
-
-function getCookieLookupAttempts(tab) {
-  return [
-    Shared.buildCookieQueryDetails(tab, true),
-    Shared.buildCookieQueryDetails(tab, false),
-    {
-      url: tab.url,
-      storeId: tab.cookieStoreId,
-    },
-  ];
-}
-
-async function getTabCookies(tab) {
-  let lastError = null;
-
-  for (const details of getCookieLookupAttempts(tab)) {
-    try {
-      return await browser.cookies.getAll(details);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error("Failed to read cookies for this tab.");
-}
-
-function getCookieRemovalAttempts(cookie, tab) {
-  const fullDetails = Shared.buildCookieRemovalDetails(cookie, tab.cookieStoreId);
-  const attempts = [fullDetails];
-
-  if (fullDetails.partitionKey) {
-    attempts.push(omitObjectField(fullDetails, "partitionKey"));
-  }
-
-  if (Object.prototype.hasOwnProperty.call(fullDetails, "firstPartyDomain")) {
-    attempts.push(omitObjectField(fullDetails, "firstPartyDomain"));
-  }
-
-  if (
-    fullDetails.partitionKey &&
-    Object.prototype.hasOwnProperty.call(fullDetails, "firstPartyDomain")
-  ) {
-    attempts.push(
-      omitObjectField(
-        omitObjectField(fullDetails, "partitionKey"),
-        "firstPartyDomain",
-      ),
-    );
-  }
-
-  const seen = new Set();
-  return attempts.filter((details) => {
-    const key = JSON.stringify(details);
-    if (seen.has(key)) {
-      return false;
-    }
-
-    seen.add(key);
-    return true;
-  });
-}
-
-async function removeCookieWithFallbacks(cookie, tab) {
-  let lastError = null;
-
-  for (const details of getCookieRemovalAttempts(cookie, tab)) {
-    try {
-      return await browser.cookies.remove(details);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error(`Failed to remove cookie "${cookie.name}".`);
-}
-
-async function removeTabCookies(tab) {
-  const cookies = await getTabCookies(tab);
-
-  const results = await Promise.allSettled(
-    cookies.map((cookie) => removeCookieWithFallbacks(cookie, tab)),
-  );
-
-  const failures = results.filter((result) => result.status === "rejected");
-  const missingRemovals = results.filter(
-    (result) => result.status === "fulfilled" && !result.value,
-  );
-  const removedCount = results.filter(
-    (result) => result.status === "fulfilled" && result.value,
-  ).length;
-
-  if (failures.length) {
-    const summary = removedCount
-      ? `Removed ${removedCount} cookie${removedCount > 1 ? "s" : ""}, but `
-      : "";
-    throw new Error(
-      `${summary}failed to remove ${failures.length} cookie${failures.length > 1 ? "s" : ""}.`,
-    );
-  }
-
-  return {
-    matchedCount: cookies.length,
-    missingCount: missingRemovals.length,
-    removedCount,
-  };
 }
 
 function allowPasteOnPage() {
