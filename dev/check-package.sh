@@ -11,7 +11,7 @@ archive="dist/privacy-containers-${version}.xpi"
 bash dev/package-addon.sh
 
 contents=$(unzip -Z1 "$archive")
-for required_path in manifest.json background/app.js domain/ui-state.js options/app.html popup/popup.html blocked/blocked.html; do
+for required_path in manifest.json background/app.js domain/ui-state.js ui/icons.js options/app.html popup/popup.html blocked/blocked.html; do
   if ! grep -Fxq "$required_path" <<<"$contents"; then
     printf 'Package is missing %s\n' "$required_path" >&2
     exit 1
