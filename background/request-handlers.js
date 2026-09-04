@@ -287,16 +287,23 @@ export function createRequestHandlers(deps) {
       }
 
       if (details.type === "main_frame") {
-        if (blockedPageStore.scheduleAutoReopenBlockedMainFrame(decision, details)) {
-          return {
-            cancel: true,
-          };
+        const autoReopen = blockedPageStore.scheduleAutoReopenBlockedMainFrame(
+          decision,
+          details,
+        );
+        if (autoReopen) {
+          return autoReopen.then(() => ({ cancel: true }));
         }
 
-        const entryId = blockedPageStore.createBlockedPageEntry(decision, details);
-        return {
-          redirectUrl: blockedPageStore.buildBlockedPageUrl(entryId),
-        };
+        return blockedPageStore
+          .createBlockedPageEntry(decision, details)
+          .then((entryId) => ({
+            redirectUrl: blockedPageStore.buildBlockedPageUrl(entryId),
+          }))
+          .catch((error) => {
+            console.error("Failed to persist blocked navigation context", error);
+            return { cancel: true };
+          });
       }
 
       return {

@@ -96,7 +96,9 @@ export function createEventBinder(deps) {
       });
 
       browser.tabs.onRemoved.addListener((tabId) => {
-        blockedPageStore.removeBlockedPageEntriesForTab(tabId);
+        blockedPageStore.removeBlockedPageEntriesForTab(tabId).catch((error) => {
+          console.error("Failed to remove blocked navigation contexts", error);
+        });
         badges.clearCommandErrorTimer(tabId);
         tabIndex.untrackTab(tabId);
         state.badgeTextByTabId.delete(tabId);

@@ -3168,6 +3168,36 @@ function getBlockedEntryId(redirectUrl) {
 
 function loadBackgroundModule() {
   const storageLocalState = {};
+  const storageSessionState = {};
+  function createStorageArea(state) {
+    return {
+      state,
+      async get(keys) {
+        if (typeof keys === "string") {
+          return Object.prototype.hasOwnProperty.call(this.state, keys)
+            ? { [keys]: this.state[keys] }
+            : {};
+        }
+        if (Array.isArray(keys)) {
+          return keys.reduce((result, key) => {
+            if (Object.prototype.hasOwnProperty.call(this.state, key)) {
+              result[key] = this.state[key];
+            }
+            return result;
+          }, {});
+        }
+        return { ...this.state };
+      },
+      async set(values) {
+        Object.assign(this.state, values);
+      },
+      async remove(keys) {
+        for (const key of Array.isArray(keys) ? keys : [keys]) {
+          delete this.state[key];
+        }
+      },
+    };
+  }
   const browserMock = {
     proxy: {
       onRequest: createEventTarget(),
@@ -3187,30 +3217,8 @@ function loadBackgroundModule() {
       onChanged: {
         addListener() {},
       },
-      local: {
-        state: storageLocalState,
-        get: async function get(keys) {
-          if (typeof keys === "string") {
-            return Object.prototype.hasOwnProperty.call(this.state, keys)
-              ? { [keys]: this.state[keys] }
-              : {};
-          }
-
-          if (Array.isArray(keys)) {
-            return keys.reduce((result, key) => {
-              if (Object.prototype.hasOwnProperty.call(this.state, key)) {
-                result[key] = this.state[key];
-              }
-              return result;
-            }, {});
-          }
-
-          return { ...this.state };
-        },
-        set: async function set(values) {
-          Object.assign(this.state, values);
-        },
-      },
+      local: createStorageArea(storageLocalState),
+      session: createStorageArea(storageSessionState),
     },
     contextualIdentities: {
       onCreated: {
@@ -3693,7 +3701,7 @@ test("blocks requests when a container references an invalid proxy", () => {
   }
 });
 
-test("redirects blocked main_frame requests and cancels subresources", () => {
+test("redirects blocked main_frame requests and cancels subresources", async () => {
   const ctx = loadBackgroundModule();
 
   try {
@@ -3712,7 +3720,7 @@ test("redirects blocked main_frame requests and cancels subresources", () => {
     });
     ctx.background.rebuildRuntime();
 
-    const redirect = ctx.background.enforceHostRules({
+    const redirect = await ctx.background.enforceHostRules({
       url: "https://example.com/account",
       type: "main_frame",
       cookieStoreId: "firefox-container-1",
@@ -3769,7 +3777,7 @@ test("automatically reopens blocked main_frame requests when exactly one allowed
       url: "https://previous.example.com/",
     });
 
-    const result = ctx.background.enforceHostRules({
+    const result = await ctx.background.enforceHostRules({
       url: "https://example.com/account",
       type: "main_frame",
       cookieStoreId: "firefox-container-9",
@@ -4193,7 +4201,7 @@ test("serves blocked-page payloads from stored snapshots even after config chang
     });
     ctx.background.rebuildRuntime();
 
-    const redirect = ctx.background.enforceHostRules({
+    const redirect = await ctx.background.enforceHostRules({
       url: "https://app.example.com/dashboard",
       type: "main_frame",
       cookieStoreId: "firefox-container-9",
@@ -4242,7 +4250,7 @@ test("serves blocked-page payloads from persisted storage after memory is cleare
         iconUrl: "work.svg",
       },
     ]);
-    const entryId = ctx.background.createBlockedPageEntry(
+    const entryId = await ctx.background.createBlockedPageEntry(
       {
         ruleId: "rule-1",
         ruleName: "Work only",
@@ -4268,6 +4276,50 @@ test("serves blocked-page payloads from persisted storage after memory is cleare
     assert.deepStrictEqual(
       payload.allowedContainers.map((entry) => entry.name),
       ["Work"],
+    );
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("persists concurrent blocked-page contexts under independent session keys", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([]);
+    const entryIds = await Promise.all(
+      Array.from({ length: 25 }, (_, index) =>
+        ctx.background.createBlockedPageEntry(
+          {
+            ruleId: `rule-${index}`,
+            ruleName: `Rule ${index}`,
+            mode: "blacklist",
+            host: `host-${index}.example.com`,
+            cookieStoreId: "firefox-container-9",
+            allowedContainerIdsForBlockedPage: [],
+          },
+          {
+            url: `https://host-${index}.example.com/`,
+            tabId: index,
+          },
+        ),
+      ),
+    );
+
+    assert.strictEqual(
+      Object.keys(ctx.browserMock.storage.session.state).length,
+      entryIds.length,
+    );
+    ctx.background.state.blockedPageEntries.clear();
+    const entries = await Promise.all(
+      entryIds.map((entryId) => ctx.background.getBlockedPageEntry(entryId)),
+    );
+    assert.deepStrictEqual(
+      entries.map((entry) => entry.url).sort(),
+      Array.from(
+        { length: 25 },
+        (_, index) => `https://host-${index}.example.com/`,
+      ).sort(),
     );
   } finally {
     ctx.cleanup();
@@ -4306,7 +4358,7 @@ test("annotates blocked-page containers when live names are ambiguous", async ()
     });
     ctx.background.rebuildRuntime();
 
-    const redirect = ctx.background.enforceHostRules({
+    const redirect = await ctx.background.enforceHostRules({
       url: "https://app.example.com/dashboard",
       type: "main_frame",
       cookieStoreId: "firefox-container-9",
@@ -4337,7 +4389,7 @@ test("marks allowed containers unavailable when they no longer exist", async () 
         iconUrl: "work.svg",
       },
     ]);
-    const entryId = ctx.background.createBlockedPageEntry(
+    const entryId = await ctx.background.createBlockedPageEntry(
       {
         ruleId: "rule-1",
         ruleName: "Work only",
@@ -4378,7 +4430,7 @@ test("removes persisted blocked-page entries when the blocked tab closes", async
         name: "Work",
       },
     ]);
-    const entryId = ctx.background.createBlockedPageEntry(
+    const entryId = await ctx.background.createBlockedPageEntry(
       {
         ruleId: "rule-1",
         ruleName: "Work only",
@@ -4393,9 +4445,7 @@ test("removes persisted blocked-page entries when the blocked tab closes", async
       },
     );
 
-    await Promise.resolve();
-    ctx.background.removeBlockedPageEntriesForTab(11);
-    await Promise.resolve();
+    await ctx.background.removeBlockedPageEntriesForTab(11);
 
     const payload = await ctx.background.getBlockedPageContextPayload({
       entry: entryId,
@@ -4419,7 +4469,7 @@ test("reopens blocked urls in the requested container by replacing the blocked t
         iconUrl: "work.svg",
       },
     ]);
-    const entryId = ctx.background.createBlockedPageEntry(
+    const entryId = await ctx.background.createBlockedPageEntry(
       {
         ruleId: "rule-1",
         ruleName: "Work only",
@@ -4476,7 +4526,7 @@ test("rejects reopening blocked urls in unauthorized containers", async () => {
         iconUrl: "work.svg",
       },
     ]);
-    const entryId = ctx.background.createBlockedPageEntry(
+    const entryId = await ctx.background.createBlockedPageEntry(
       {
         ruleId: "rule-1",
         ruleName: "Work only",
@@ -4556,7 +4606,7 @@ test("suppresses repeated auto-reopen attempts for the same target and url", asy
       BLOCKED_PAGE_ENTRY_TTL_MS: 5 * 60 * 1000,
       BLOCKED_PAGE_MAX_ENTRIES: 200,
       BLOCKED_PAGE_PATH: "blocked/blocked.html",
-      BLOCKED_PAGE_STORAGE_KEY: "blockedPageEntries",
+      BLOCKED_PAGE_STORAGE_PREFIX: "blockedContext:",
     },
     containerCache: {
       isContainerAvailable(cookieStoreId) {
@@ -4601,14 +4651,16 @@ test("suppresses repeated auto-reopen attempts for the same target and url", asy
     tabId: 7,
   };
 
-  assert.strictEqual(
-    blockedPageStore.scheduleAutoReopenBlockedMainFrame(decision, details),
-    true,
+  const firstAttempt = blockedPageStore.scheduleAutoReopenBlockedMainFrame(
+    decision,
+    details,
   );
+  assert.ok(firstAttempt);
   assert.strictEqual(
     blockedPageStore.scheduleAutoReopenBlockedMainFrame(decision, details),
     false,
   );
+  await firstAttempt;
 });
 
 test("validates tab placement separately from web page actions", () => {

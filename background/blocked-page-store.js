@@ -10,30 +10,9 @@ export function createBlockedPageStore(deps) {
       requestContextCache,
       tabActions,
     } = deps;
-    const pendingStorageTasks = new Set();
     const autoReopenAttemptsByKey = new Map();
     const AUTO_REOPEN_GUARD_TTL_MS = 10000;
     const AUTO_REOPEN_NOTIFICATION_DURATION_MS = 6000;
-
-    function trackStorageTask(task) {
-      if (!task || typeof task.then !== "function") {
-        return task;
-      }
-
-      pendingStorageTasks.add(task);
-      task.finally(() => {
-        pendingStorageTasks.delete(task);
-      });
-      return task;
-    }
-
-    async function flushPendingStorageTasks() {
-      if (!pendingStorageTasks.size) {
-        return;
-      }
-
-      await Promise.allSettled(Array.from(pendingStorageTasks));
-    }
 
     function cleanupAutoReopenAttempts(now) {
       const effectiveNow = Number.isFinite(now) ? now : Date.now();
@@ -61,15 +40,6 @@ export function createBlockedPageStore(deps) {
       });
     }
 
-    function getStoredEntriesValue(payload) {
-      if (!payload || typeof payload !== "object") {
-        return [];
-      }
-
-      const entries = payload[constants.BLOCKED_PAGE_STORAGE_KEY];
-      return Array.isArray(entries) ? entries : [];
-    }
-
     function isUsableStoredEntry(entry) {
       return (
         entry &&
@@ -79,63 +49,51 @@ export function createBlockedPageStore(deps) {
       );
     }
 
-    function pruneEntryList(entries, now) {
-      const effectiveNow = Number.isFinite(now) ? now : Date.now();
+    function getStorageKey(entryId) {
+      return `${constants.BLOCKED_PAGE_STORAGE_PREFIX}${entryId}`;
+    }
+
+    function getStoredEntries(payload) {
+      return Object.entries(payload || {})
+        .filter(([key, entry]) =>
+          key.startsWith(constants.BLOCKED_PAGE_STORAGE_PREFIX) &&
+          isUsableStoredEntry(entry),
+        )
+        .map(([key, entry]) => ({ key, entry }));
+    }
+
+    async function cleanupPersistedEntries(now) {
       const staleThreshold =
-        effectiveNow - constants.BLOCKED_PAGE_ENTRY_TTL_MS;
-      const filtered = (Array.isArray(entries) ? entries : []).filter(
-        (entry) =>
-          isUsableStoredEntry(entry) && entry.createdAt >= staleThreshold,
+        (Number.isFinite(now) ? now : Date.now()) -
+        constants.BLOCKED_PAGE_ENTRY_TTL_MS;
+      const storedEntries = getStoredEntries(
+        await browser.storage.session.get(null),
+      ).sort((left, right) => left.entry.createdAt - right.entry.createdAt);
+      const retained = storedEntries.filter(
+        ({ entry }) => entry.createdAt >= staleThreshold,
       );
-
-      if (filtered.length <= constants.BLOCKED_PAGE_MAX_ENTRIES) {
-        return filtered;
-      }
-
-      return filtered.slice(
-        filtered.length - constants.BLOCKED_PAGE_MAX_ENTRIES,
+      const excessCount = Math.max(
+        0,
+        retained.length - constants.BLOCKED_PAGE_MAX_ENTRIES,
       );
-    }
+      const keysToRemove = [
+        ...storedEntries
+          .filter(({ entry }) => entry.createdAt < staleThreshold)
+          .map(({ key }) => key),
+        ...retained.slice(0, excessCount).map(({ key }) => key),
+      ];
 
-    async function readStoredEntries() {
-      if (
-        !browser.storage ||
-        !browser.storage.local ||
-        typeof browser.storage.local.get !== "function"
-      ) {
-        return [];
+      if (keysToRemove.length) {
+        await browser.storage.session.remove(keysToRemove);
       }
-
-      const payload = await browser.storage.local.get(
-        constants.BLOCKED_PAGE_STORAGE_KEY,
-      );
-      return getStoredEntriesValue(payload);
-    }
-
-    async function writeStoredEntries(entries) {
-      if (
-        !browser.storage ||
-        !browser.storage.local ||
-        typeof browser.storage.local.set !== "function"
-      ) {
-        return;
-      }
-
-      await browser.storage.local.set({
-        [constants.BLOCKED_PAGE_STORAGE_KEY]: entries,
-      });
     }
 
     async function persistBlockedPageEntry(entry) {
       if (!isUsableStoredEntry(entry)) {
         return;
       }
-
-      const entries = await readStoredEntries();
-      const nextEntries = pruneEntryList(
-        entries.filter((storedEntry) => storedEntry.id !== entry.id).concat(entry),
-      );
-      await writeStoredEntries(nextEntries);
+      await browser.storage.session.set({ [getStorageKey(entry.id)]: entry });
+      await cleanupPersistedEntries();
     }
 
     async function removePersistedBlockedPageEntry(entryId) {
@@ -143,11 +101,7 @@ export function createBlockedPageStore(deps) {
         return;
       }
 
-      const entries = await readStoredEntries();
-      const nextEntries = pruneEntryList(
-        entries.filter((entry) => entry.id !== entryId),
-      );
-      await writeStoredEntries(nextEntries);
+      await browser.storage.session.remove(getStorageKey(entryId));
     }
 
     async function removePersistedBlockedPageEntriesForTab(tabId) {
@@ -155,11 +109,12 @@ export function createBlockedPageStore(deps) {
         return;
       }
 
-      const entries = await readStoredEntries();
-      const nextEntries = pruneEntryList(
-        entries.filter((entry) => entry.tabId !== tabId),
-      );
-      await writeStoredEntries(nextEntries);
+      const keys = getStoredEntries(await browser.storage.session.get(null))
+        .filter(({ entry }) => entry.tabId === tabId)
+        .map(({ key }) => key);
+      if (keys.length) {
+        await browser.storage.session.remove(keys);
+      }
     }
 
     async function loadPersistedBlockedPageEntry(entryId) {
@@ -167,17 +122,22 @@ export function createBlockedPageStore(deps) {
         return null;
       }
 
-      await flushPendingStorageTasks();
-      const storedEntries = await readStoredEntries();
-      const entries = pruneEntryList(storedEntries);
-      if (entries.length !== storedEntries.length) {
-        await writeStoredEntries(entries);
+      const key = getStorageKey(entryId);
+      const payload = await browser.storage.session.get(key);
+      const entry = payload[key];
+      if (
+        !isUsableStoredEntry(entry) ||
+        entry.createdAt + constants.BLOCKED_PAGE_ENTRY_TTL_MS <= Date.now()
+      ) {
+        if (entry) {
+          await browser.storage.session.remove(key);
+        }
+        return null;
       }
-      const entry = entries.find((storedEntry) => storedEntry.id === entryId) || null;
       if (entry) {
         state.blockedPageEntries.set(entryId, entry);
       }
-      return entry;
+      return entry || null;
     }
 
     function createBlockedPageEntryId() {
@@ -205,7 +165,7 @@ export function createBlockedPageStore(deps) {
       }
     }
 
-    function createBlockedPageEntry(decision, details) {
+    async function createBlockedPageEntry(decision, details) {
       cleanupBlockedPageEntries();
 
       const entryId = createBlockedPageEntryId();
@@ -245,12 +205,14 @@ export function createBlockedPageStore(deps) {
         tabId: typeof details.tabId === "number" ? details.tabId : null,
         createdAt: Date.now(),
       });
-      trackStorageTask(
-        persistBlockedPageEntry(state.blockedPageEntries.get(entryId)),
-      );
-
       cleanupBlockedPageEntries();
-      return entryId;
+      try {
+        await persistBlockedPageEntry(state.blockedPageEntries.get(entryId));
+        return entryId;
+      } catch (error) {
+        state.blockedPageEntries.delete(entryId);
+        throw error;
+      }
     }
 
     async function getBlockedPageEntry(entryId) {
@@ -261,7 +223,7 @@ export function createBlockedPageStore(deps) {
       );
     }
 
-    function removeBlockedPageEntriesForTab(tabId) {
+    async function removeBlockedPageEntriesForTab(tabId) {
       if (typeof tabId !== "number") {
         return;
       }
@@ -272,7 +234,7 @@ export function createBlockedPageStore(deps) {
         }
       });
 
-      trackStorageTask(removePersistedBlockedPageEntriesForTab(tabId));
+      await removePersistedBlockedPageEntriesForTab(tabId);
     }
 
     function buildBlockedPageUrl(entryId) {
@@ -365,7 +327,7 @@ export function createBlockedPageStore(deps) {
         return false;
       }
 
-      const entryId = createBlockedPageEntry(decision, details);
+      const entryId = await createBlockedPageEntry(decision, details);
       await browser.tabs.update(details.tabId, {
         url: buildBlockedPageUrl(entryId),
       });
@@ -426,7 +388,7 @@ export function createBlockedPageStore(deps) {
 
       autoReopenAttemptsByKey.set(attemptKey, Date.now());
 
-      Promise.resolve()
+      return Promise.resolve()
         .then(async () => {
           try {
             await reopenBlockedMainFrameInContainer(details, targetCookieStoreId);
@@ -442,10 +404,7 @@ export function createBlockedPageStore(deps) {
             }
             console.error("Failed to auto-reopen blocked navigation", error);
           }
-        })
-        .catch(() => undefined);
-
-      return true;
+        });
     }
 
     async function openBlockedUrlInContainer(message, sender) {
@@ -525,6 +484,7 @@ export function createBlockedPageStore(deps) {
     return {
       buildBlockedPageUrl,
       cleanupBlockedPageEntries,
+      cleanupPersistedEntries,
       createBlockedPageEntry,
       getBlockedPageContextPayload,
       getBlockedPageEntry,
