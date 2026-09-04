@@ -24,6 +24,7 @@ import { createRequestHandlers } from "./request-handlers.js";
 import { createNetworkListenerManager } from "./network-listeners.js";
 import { createLifecycleController } from "./lifecycle.js";
 import { createEventBinder } from "./events.js";
+import { createConfigService } from "./config-service.js";
 
 const constants = Object.freeze({
   BACKGROUND_WRITER_ID,
@@ -94,6 +95,13 @@ export function createBackgroundApp(deps = {}) {
     },
     onRoutingReady: markRoutingReady,
   });
+  let lifecycle = null;
+  const configService = createConfigService({
+    Shared: sharedApi,
+    browser: browserApi,
+    writerId: BACKGROUND_WRITER_ID,
+    onChanged: (bundle) => lifecycle.handleConfigChanged(bundle),
+  });
   const blockedPageStore = createBlockedPageStore({
     Shared: sharedApi,
     browser: browserApi,
@@ -132,12 +140,13 @@ export function createBackgroundApp(deps = {}) {
     state,
     tabActions,
   });
-  const lifecycle = createLifecycleController({
+  lifecycle = createLifecycleController({
     Shared: sharedApi,
     badges,
     browser: browserApi,
     constants,
     containerCache,
+    configService,
     runtimeManager,
     shortcuts,
     state,
@@ -149,6 +158,7 @@ export function createBackgroundApp(deps = {}) {
     blockedPageStore,
     browser: browserApi,
     constants,
+    configService,
     lifecycle,
     shortcuts,
     state,
@@ -180,6 +190,7 @@ export function createBackgroundApp(deps = {}) {
     cleanupBlockedPageEntries: blockedPageStore.cleanupBlockedPageEntries,
     createBlockedPageEntry: blockedPageStore.createBlockedPageEntry,
     createBackgroundApp,
+    configService,
     enforceHostRules: requestHandlers.enforceHostRules,
     getBlockedPageContextPayload: blockedPageStore.getBlockedPageContextPayload,
     getBlockedPageEntry: blockedPageStore.getBlockedPageEntry,

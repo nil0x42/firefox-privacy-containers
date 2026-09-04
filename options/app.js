@@ -1,6 +1,10 @@
 import Shared from "../utils/shared.js";
 import ConfigTransfer from "./config-transfer.js";
 import IdentityChoices from "./contextual-identities.js";
+import {
+  getConfigBundle,
+  saveConfigBundle,
+} from "./config-client.js";
 
 const ICON_SVG_BY_NAME = {
   fingerprint:
@@ -2575,7 +2579,7 @@ async function refreshState(options) {
   const preserveDraft = Boolean(options && options.preserveDraft);
   const [bundle, containers, commands, identityChoices] =
     await Promise.all([
-      Shared.loadConfigBundle(),
+      getConfigBundle(),
       browser.contextualIdentities.query({}),
       browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
       IdentityChoices.getSupportedIdentityChoices(browser),
@@ -2797,7 +2801,7 @@ function getCurrentTransferSnapshot() {
 
 async function assertTransferStateUnchanged(snapshot) {
   const [bundle, containers, commands] = await Promise.all([
-    Shared.loadConfigBundle(),
+    getConfigBundle(),
     browser.contextualIdentities.query({}),
     browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
   ]);
@@ -3147,7 +3151,7 @@ async function cleanupImportTransaction(transaction) {
   }
   const failed = [];
   for (const container of remaining) {
-    const bundle = await Shared.loadConfigBundle();
+    const bundle = await getConfigBundle();
     if (ConfigTransfer.getRecoveryAction(transaction, bundle) !== "cleanup") {
       return {
         complete: false,
@@ -3191,7 +3195,7 @@ async function cleanupImportTransaction(transaction) {
 }
 
 async function recoverImportTransaction(transaction, { interactive = true } = {}) {
-  const bundle = await Shared.loadConfigBundle();
+  const bundle = await getConfigBundle();
   const action = ConfigTransfer.getRecoveryAction(transaction, bundle);
   if (action === "rollback") {
     return { action, ...(await rollbackImportTransaction(transaction)) };
@@ -3669,10 +3673,9 @@ async function flushConfigSave() {
   }
   state.dirty = false;
 
-  state.savePromise = Shared.saveConfigBundle(
+  state.savePromise = saveConfigBundle(
     expectedRevision,
     snapshot,
-    state.writerId,
   )
     .then((savedBundle) => {
       setPersistedBundle(savedBundle);
@@ -6123,10 +6126,11 @@ function bindEvents() {
       return;
     }
 
-    if (
-      nextBundle.meta.writer === state.writerId &&
-      nextBundle.meta.revision <= state.persistedMeta.revision
-    ) {
+    if (nextBundle.meta.revision <= state.persistedMeta.revision) {
+      return;
+    }
+
+    if (state.saveInFlight) {
       return;
     }
 

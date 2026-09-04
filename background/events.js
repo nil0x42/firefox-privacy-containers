@@ -9,6 +9,7 @@ export function createEventBinder(deps) {
       badges,
       shortcuts,
       tabIndex,
+      configService,
     } = deps;
 
     function handleRuntimeMessage(message, sender) {
@@ -18,6 +19,20 @@ export function createEventBinder(deps) {
 
       if (message.type === "containers-changed") {
         return lifecycle.handleContainersChangedMessage();
+      }
+
+      if (message.type === "config:get") {
+        return configService.getBundle().then(
+          (bundle) => ({ ok: true, bundle }),
+          (error) => ({ ok: false, error: serializeConfigError(error) }),
+        );
+      }
+
+      if (message.type === "config:save") {
+        return configService.save(message.expectedRevision, message.config).then(
+          (bundle) => ({ ok: true, bundle }),
+          (error) => ({ ok: false, error: serializeConfigError(error) }),
+        );
       }
 
       if (message.type === "get-blocked-page-context") {
@@ -35,26 +50,6 @@ export function createEventBinder(deps) {
     }
 
     function bindBrowserEvents() {
-      browser.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== "local" || !changes[Shared.CONFIG_KEY]) {
-          return;
-        }
-
-        const nextBundle = changes[Shared.CONFIG_KEY].newValue;
-        if (
-          nextBundle &&
-          Shared.isConfigBundle(nextBundle) &&
-          nextBundle.meta.writer === constants.BACKGROUND_WRITER_ID &&
-          nextBundle.meta.revision <= state.configMeta.revision
-        ) {
-          return;
-        }
-
-        lifecycle.handleConfigChanged(nextBundle).catch((error) => {
-          console.error("Failed to refresh config cache", error);
-        });
-      });
-
       browser.contextualIdentities.onCreated.addListener((change) => {
         lifecycle.handleContainerCreated(change.contextualIdentity).catch(() => undefined);
       });
@@ -103,6 +98,15 @@ export function createEventBinder(deps) {
         tabIndex.untrackTab(tabId);
         state.badgeTextByTabId.delete(tabId);
       });
+    }
+
+    function serializeConfigError(error) {
+      return {
+        code: error?.code || "CONFIG_NOT_READY",
+        message: error?.message || "Configuration request failed.",
+        validationErrors: error?.validationErrors,
+        bundle: error?.bundle,
+      };
     }
 
     return {

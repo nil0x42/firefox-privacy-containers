@@ -15,6 +15,7 @@ import { createTabActions } from "../background/tab-actions.js";
 import { createRequestHandlers } from "../background/request-handlers.js";
 import { createRequestContextCache } from "../background/request-context-cache.js";
 import { createRuntimeManager } from "../background/runtime-manager.js";
+import { createConfigService } from "../background/config-service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -62,6 +63,17 @@ function testCases(cases, runCase) {
 
 async function withMockBrowser(mock, task) {
   const previousBrowser = global.browser;
+  if (mock.storage && !mock.runtime) {
+    mock.runtime = {};
+  }
+  if (mock.storage && typeof mock.runtime?.sendMessage !== "function") {
+    mock.runtime.sendMessage = async (message) => {
+      if (message?.type === "config:get") {
+        return { ok: true, bundle: await Shared.loadConfigBundle() };
+      }
+      throw new Error(`Unexpected runtime message: ${message?.type || "unknown"}`);
+    };
+  }
   global.browser = mock;
   try {
     return await task();
@@ -1578,6 +1590,39 @@ test("does not overwrite a future stored configuration", async () => {
   );
   assert.strictEqual(writes, 0);
   assert.strictEqual(storage.values[Shared.CONFIG_KEY], future);
+});
+
+test("serializes configuration writes and rejects stale revisions", async () => {
+  const storage = createLocalStorageMock();
+  const applied = [];
+  const service = createConfigService({
+    Shared,
+    browser: { storage: { local: storage } },
+    writerId: "background",
+    async onChanged(bundle) {
+      applied.push(bundle.meta.revision);
+    },
+  });
+  await service.initialize();
+  const firstConfig = Shared.createDefaultConfig();
+  firstConfig.globalHeaders.push({ name: "X-First", value: "1" });
+  const staleConfig = Shared.createDefaultConfig();
+  staleConfig.globalHeaders.push({ name: "X-Stale", value: "1" });
+
+  const results = await Promise.allSettled([
+    service.save(0, firstConfig),
+    service.save(0, staleConfig),
+  ]);
+  assert.strictEqual(results[0].status, "fulfilled");
+  assert.strictEqual(results[1].status, "rejected");
+  assert.strictEqual(results[1].reason.code, "CONFIG_CONFLICT");
+  assert.deepStrictEqual(applied, [1]);
+
+  const nextConfig = Shared.clone(results[0].value.config);
+  nextConfig.globalHeaders.push({ name: "X-Second", value: "2" });
+  const nextBundle = await service.save(1, nextConfig);
+  assert.strictEqual(nextBundle.meta.revision, 2);
+  assert.deepStrictEqual(applied, [1, 2]);
 });
 
 test("exports a versioned portable configuration including secrets and shortcuts", () => {

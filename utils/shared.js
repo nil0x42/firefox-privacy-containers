@@ -2704,55 +2704,9 @@
     return normalizeConfigBundle(storedConfig);
   }
 
-  function createConflictError(message, bundle) {
-    const error = new Error(message);
-    error.code = "CONFIG_CONFLICT";
-    error.bundle = bundle || null;
-    return error;
-  }
-
-  async function saveConfigBundle(expectedRevision, config, writerId) {
-    const validation = validateConfig(config);
-    if (!validation.valid) {
-      const error = new Error(validation.errors.join("\n"));
-      error.validationErrors = validation.errors;
-      throw error;
-    }
-
-    const currentBundle = await loadConfigBundle();
-    if (
-      expectedRevision != null &&
-      Number.isInteger(expectedRevision) &&
-      currentBundle.meta.revision !== expectedRevision
-    ) {
-      throw createConflictError(
-        `Config revision mismatch: expected ${expectedRevision}, got ${currentBundle.meta.revision}`,
-        currentBundle,
-      );
-    }
-
-    const nextBundle = createConfigBundle(validation.config, {
-      revision: currentBundle.meta.revision + 1,
-      updatedAt: new Date().toISOString(),
-      writer: normalizeText(writerId),
-    });
-
-    await browser.storage.local.set({ [CONFIG_KEY]: nextBundle });
-    return nextBundle;
-  }
-
   async function loadConfig() {
     const bundle = await loadConfigBundle();
     return bundle.config;
-  }
-
-  async function saveConfig(config, options) {
-    const savedBundle = await saveConfigBundle(
-      options && options.expectedRevision,
-      config,
-      options && options.writerId,
-    );
-    return savedBundle.config;
   }
 
   const api = {
@@ -2794,7 +2748,6 @@
     createDefaultProxyBypass,
     createHeaderId,
     createHostRuleId,
-    createConflictError,
     compileProxyPlan,
     compileShortcutRuntime,
     createProxyId,
@@ -2883,8 +2836,6 @@
     parseHeaderLines,
     parseRequestHost,
     parseRequestTarget,
-    saveConfigBundle,
-    saveConfig,
     captureShortcutFromEventData,
     supportsProxyAuth,
     uniqueSortedHosts,

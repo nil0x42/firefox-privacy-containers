@@ -9,6 +9,7 @@ export function createLifecycleController(deps) {
       tabIndex,
       badges,
       shortcuts,
+      configService,
     } = deps;
 
     async function refreshTabCache() {
@@ -17,30 +18,9 @@ export function createLifecycleController(deps) {
       return tabs;
     }
 
-    async function mutateConfigWithRetry(mutator, writerId) {
-      let baseBundle = Shared.createConfigBundle(state.config, state.configMeta);
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const nextConfig = mutator(Shared.clone(baseBundle.config));
-
-        try {
-          const savedBundle = await Shared.saveConfigBundle(
-            baseBundle.meta.revision,
-            nextConfig,
-            writerId,
-          );
-          runtimeManager.applyConfigBundle(savedBundle);
-          return savedBundle.config;
-        } catch (error) {
-          if (error.code !== "CONFIG_CONFLICT" || attempt === 1) {
-            throw error;
-          }
-
-          baseBundle = await Shared.loadConfigBundle();
-        }
-      }
-
-      return state.config;
+    async function mutateConfig(mutator) {
+      const savedBundle = await configService.mutate(mutator);
+      return savedBundle.config;
     }
 
     function haveBadgeAssignmentsChanged(previousProxyRuntime, nextProxyRuntime) {
@@ -151,9 +131,8 @@ export function createLifecycleController(deps) {
       containerCache.removeContainerFromCache(cookieStoreId);
 
       if (hadSetting) {
-        await mutateConfigWithRetry(
+        await mutateConfig(
           (config) => Shared.cleanupRemovedContainer(config, cookieStoreId),
-          constants.BACKGROUND_WRITER_ID,
         );
       }
 
@@ -240,7 +219,7 @@ export function createLifecycleController(deps) {
     }
 
     async function initialize() {
-      runtimeManager.applyConfigBundle(await Shared.loadConfigBundle());
+      runtimeManager.applyConfigBundle(await configService.initialize());
       await Promise.all([containerCache.refreshContainerCache(), refreshTabCache()]);
       runtimeManager.rebuildRuntime();
       await Promise.all([
@@ -256,6 +235,6 @@ export function createLifecycleController(deps) {
       handleContainerUpdated,
       handleContainersChangedMessage,
       initialize,
-      mutateConfigWithRetry,
+      mutateConfig,
     };
   }
