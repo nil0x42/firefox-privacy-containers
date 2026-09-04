@@ -1,4 +1,4 @@
-export async function showTransientNotification(browser, options) {
+export async function showNotification(browser, options) {
   if (
     !browser.notifications ||
     typeof browser.notifications.create !== "function"
@@ -17,14 +17,21 @@ export async function showTransientNotification(browser, options) {
     message: options.message,
   });
 
-  if (typeof browser.notifications.clear === "function") {
-    const clearTimer = setTimeout(() => {
-      browser.notifications.clear(notificationId).catch(() => undefined);
-    }, options.durationMs);
-    if (typeof clearTimer?.unref === "function") {
-      clearTimer.unref();
-    }
-  }
-
   return true;
+}
+
+export function showCommandFailureNotification(browser, error) {
+  const rawMessage =
+    typeof error?.message === "string" && error.message.trim()
+      ? error.message.trim()
+      : error
+        ? String(error)
+        : "Shortcut action failed";
+  const message = rawMessage.endsWith(".") ? rawMessage : `${rawMessage}.`;
+
+  return showNotification(browser, {
+    idPrefix: "shortcut-failure",
+    title: "Shortcut failed",
+    message,
+  });
 }

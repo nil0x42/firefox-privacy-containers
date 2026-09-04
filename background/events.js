@@ -1,3 +1,5 @@
+import { showCommandFailureNotification } from "./notifications.js";
+
 export function createEventBinder(deps) {
     const {
       state,
@@ -118,7 +120,7 @@ export function createEventBinder(deps) {
       browser.commands.onCommand.addListener((commandName) => {
         shortcuts.handleCommand(commandName).catch((error) => {
           console.error("Command failed", commandName, error);
-          badges.showCommandFailure(error).catch(() => undefined);
+          showCommandFailureNotification(browser, error).catch(() => undefined);
         });
       });
 
@@ -137,7 +139,6 @@ export function createEventBinder(deps) {
         blockedPageStore.removeBlockedPageEntriesForTab(tabId).catch((error) => {
           console.error("Failed to remove blocked navigation contexts", error);
         });
-        badges.clearCommandErrorTimer(tabId);
         tabIndex.untrackTab(tabId);
         state.badgeTextByTabId.delete(tabId);
       });

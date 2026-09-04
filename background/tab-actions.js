@@ -1,18 +1,15 @@
-import { showTransientNotification } from "./notifications.js";
+import { showNotification } from "./notifications.js";
 
 export function createTabActions(deps) {
     const { browser, Shared } = deps;
-    const DEFAULT_CONTAINER_NOTIFICATION_DURATION_MS = 6000;
-
     function isBlankTabUrl(url) {
       return url === "about:newtab" || url === "about:blank";
     }
 
     async function showDefaultContainerNotification() {
       try {
-        await showTransientNotification(browser, {
+        await showNotification(browser, {
           idPrefix: "default-container-required",
-          durationMs: DEFAULT_CONTAINER_NOTIFICATION_DURATION_MS,
           title: "Default container required",
           message: "This URL can only be opened in Firefox's default container.",
         });

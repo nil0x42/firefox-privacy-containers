@@ -11,7 +11,6 @@ export function createEmptyRequestContextCacheSlot() {
 export function createBackgroundState(Shared) {
     return {
       badgeTextByTabId: new Map(),
-      commandErrorTimerByTabId: new Map(),
       config: Shared.createDefaultConfig(),
       configMeta: Shared.createConfigBundle(Shared.createDefaultConfig(), {}).meta,
       tabCookieStoreIdByTabId: new Map(),

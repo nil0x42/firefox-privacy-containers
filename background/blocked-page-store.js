@@ -1,4 +1,4 @@
-import { showTransientNotification } from "./notifications.js";
+import { showNotification } from "./notifications.js";
 
 export function createBlockedPageStore(deps) {
     const {
@@ -12,7 +12,6 @@ export function createBlockedPageStore(deps) {
     } = deps;
     const autoReopenAttemptsByKey = new Map();
     const AUTO_REOPEN_GUARD_TTL_MS = 10000;
-    const AUTO_REOPEN_NOTIFICATION_DURATION_MS = 6000;
 
     function cleanupAutoReopenAttempts(now) {
       const effectiveNow = Number.isFinite(now) ? now : Date.now();
@@ -32,9 +31,8 @@ export function createBlockedPageStore(deps) {
       const containerName = container?.name || "the allowed container";
       const ruleName = decision?.ruleName || "this Host Rule";
 
-      await showTransientNotification(browser, {
+      await showNotification(browser, {
         idPrefix: "auto-reopen",
-        durationMs: AUTO_REOPEN_NOTIFICATION_DURATION_MS,
         title: `Link reopened in ${containerName}`,
         message: `Privacy Containers automatically reopened this link in "${containerName}" because the Host Rule "${ruleName}" only allows this host in that container.`,
       });

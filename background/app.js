@@ -5,9 +5,6 @@ import {
   BLOCKED_PAGE_MAX_ENTRIES,
   BLOCKED_PAGE_PATH,
   BLOCKED_PAGE_STORAGE_PREFIX,
-  COMMAND_ERROR_BADGE_DURATION_MS,
-  COMMAND_ERROR_BADGE_TEXT,
-  DEFAULT_BROWSER_ACTION_TITLE,
   PROXY_CONNECTION_ISOLATION_PREFIX,
   PROXY_FAILOVER_TIMEOUT_SECONDS,
 } from "./constants.js";
@@ -31,9 +28,6 @@ const constants = Object.freeze({
   BLOCKED_PAGE_MAX_ENTRIES,
   BLOCKED_PAGE_PATH,
   BLOCKED_PAGE_STORAGE_PREFIX,
-  COMMAND_ERROR_BADGE_DURATION_MS,
-  COMMAND_ERROR_BADGE_TEXT,
-  DEFAULT_BROWSER_ACTION_TITLE,
   PROXY_CONNECTION_ISOLATION_PREFIX,
   PROXY_FAILOVER_TIMEOUT_SECONDS,
 });
@@ -117,9 +111,7 @@ export function createBackgroundApp(deps = {}) {
   const badges = createBadgeManager({
     Shared: sharedApi,
     browser: browserApi,
-    constants,
     state,
-    tabActions,
     tabIndex,
   });
   const shortcuts = createShortcutManager({

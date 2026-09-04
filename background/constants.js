@@ -1,7 +1,4 @@
 export const BACKGROUND_WRITER_ID = "background";
-export const DEFAULT_BROWSER_ACTION_TITLE = "Privacy Containers";
-export const COMMAND_ERROR_BADGE_TEXT = "!";
-export const COMMAND_ERROR_BADGE_DURATION_MS = 4500;
 export const PROXY_FAILOVER_TIMEOUT_SECONDS = 1; // Firefox's accepted minimum.
 export const PROXY_CONNECTION_ISOLATION_PREFIX = "firefox-privacy-containers";
 export const BLOCKED_PAGE_PATH = "blocked/blocked.html";
