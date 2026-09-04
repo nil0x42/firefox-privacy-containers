@@ -1,0 +1,19 @@
+{
+  "name": "firefox-privacy-containers",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "benchmark": "node dev/benchmark.js",
+    "check": "npm test && npm run lint && npm run package:check",
+    "lint": "web-ext lint --source-dir . --ignore-files '*.md' package.json package-lock.json 'tests/**' 'dev/**' '.github/**' 'dist/**'",
+    "package": "bash dev/package-addon.sh",
+    "package:check": "bash dev/check-package.sh",
+    "test": "node tests/run-tests.js"
+  },
+  "devDependencies": {
+    "web-ext": "10.6.0"
+  }
+}

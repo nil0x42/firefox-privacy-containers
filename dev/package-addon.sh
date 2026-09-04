@@ -13,42 +13,30 @@ if [[ -z "$current_version" ]]; then
   exit 1
 fi
 
-suggested_version=${1:-$current_version}
-printf 'Usage: %s [suggested-version]\n' "$0"
-printf 'Example: %s 0.1.1\n\n' "$0"
-printf 'Current version: %s\n' "$current_version"
-read -r -p "New version [$suggested_version] (press Enter to keep the suggestion): " version
-version=${version:-$suggested_version}
-
-if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-  printf 'Invalid version: %s (expected: MAJOR.MINOR.PATCH)\n' "$version" >&2
+if (( $# != 0 )); then
+  printf 'Usage: %s\n' "$0" >&2
+  printf 'The package version is read from manifest.json.\n' >&2
   exit 1
 fi
 
-if [[ "$version" != "$current_version" ]]; then
-  sed -i -E "0,/^([[:space:]]*\"version\"[[:space:]]*:[[:space:]]*)\"[^\"]+\"/s//\1\"$version\"/" "$manifest"
-  printf 'Updated version: %s -> %s\n' "$current_version" "$version"
-fi
+stage_dir=$(mktemp -d)
+trap 'rm -rf -- "$stage_dir"' EXIT
+
+mkdir -p "$stage_dir"/{background,blocked,options,popup,res,utils}
+cp manifest.json LICENSE "$stage_dir"/
+cp background/*.js "$stage_dir/background/"
+cp blocked/* "$stage_dir/blocked/"
+cp options/* "$stage_dir/options/"
+cp popup/* "$stage_dir/popup/"
+cp res/* "$stage_dir/res/"
+cp utils/*.js "$stage_dir/utils/"
 
 mkdir -p dist
-archive="dist/privacy-containers-${version}.xpi"
-rm -f "$archive"
+archive="privacy-containers-${current_version}.xpi"
+web-ext build \
+  --source-dir "$stage_dir" \
+  --artifacts-dir dist \
+  --filename "$archive" \
+  --overwrite-dest
 
-# Package only files that Firefox loads at runtime. Development files such as
-# tests, documentation, this script, package metadata, and dist/ are kept out
-# of the XPI so the submitted artifact is small and straightforward to review.
-package_paths=(
-  manifest.json
-  LICENSE
-  background/*.js
-  blocked/*
-  options/*
-  popup/*
-  res/*
-  utils/*.js
-)
-
-zip -r "$archive" "${package_paths[@]}" \
-  -x '*/.*' '.*' >/dev/null
-
-printf 'Created archive: %s\n' "$archive"
+printf 'Created archive: dist/%s\n' "$archive"
