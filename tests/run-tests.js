@@ -3,6 +3,7 @@ const fs = require("fs");
 const Shared = require("../utils/shared.js");
 const ConfigTransfer = require("../options/config-transfer.js");
 const CookieActions = require("../popup/cookies.js");
+const IdentityChoices = require("../options/contextual-identities.js");
 const path = require("path");
 let createBackgroundApp;
 let createShortcutManager;
@@ -244,15 +245,53 @@ test("declares a Firefox Manifest V3 event page without widening host access", (
   );
 });
 
-test("avoids unsupported contextual identity APIs and HTML icon injection", () => {
+test("uses safe SVG parsing without HTML injection", () => {
   for (const filename of ["options/app.js", "popup/popup.js"]) {
     const source = fs.readFileSync(path.join(__dirname, "..", filename), "utf8");
     assert.strictEqual(source.includes("innerHTML"), false);
-    assert.strictEqual(source.includes("getSupportedColors"), false);
-    assert.strictEqual(source.includes("getSupportedIcons"), false);
     assert.ok(source.includes('parseFromString(svgMarkup, "text/html")'));
     assert.ok(source.includes('namespaceURI !== "http://www.w3.org/2000/svg"'));
   }
+});
+
+test("uses Firefox identity choices when the browser exposes them", async () => {
+  const colors = [
+    { color: "cyan", colorCode: "#00aabb" },
+    { color: "violet", colorCode: "#7744cc" },
+  ];
+  const icons = [{ icon: "briefcase", iconUrl: "resource://briefcase.svg" }];
+  const choices = await IdentityChoices.getSupportedIdentityChoices({
+    contextualIdentities: {
+      async getSupportedColors() {
+        return colors;
+      },
+      async getSupportedIcons() {
+        return icons;
+      },
+    },
+  });
+
+  assert.deepStrictEqual(choices, { colors, icons });
+});
+
+test("falls back to Firefox 142 identity choices when discovery is unavailable", async () => {
+  const missingApiChoices =
+    await IdentityChoices.getSupportedIdentityChoices({ contextualIdentities: {} });
+  assert.deepStrictEqual(missingApiChoices.colors, IdentityChoices.FALLBACK_COLORS);
+  assert.deepStrictEqual(missingApiChoices.icons, IdentityChoices.FALLBACK_ICONS);
+
+  const rejectedChoices = await IdentityChoices.getSupportedIdentityChoices({
+    contextualIdentities: {
+      async getSupportedColors() {
+        throw new Error("disabled");
+      },
+      async getSupportedIcons() {
+        return [];
+      },
+    },
+  });
+  assert.deepStrictEqual(rejectedChoices.colors, IdentityChoices.FALLBACK_COLORS);
+  assert.deepStrictEqual(rejectedChoices.icons, IdentityChoices.FALLBACK_ICONS);
 });
 
 test("wires compact configuration transfer controls without duplicating UI pages", () => {
@@ -1239,9 +1278,12 @@ test("merges request headers with a small compiled header plan", () => {
 
 test("maps Firefox container colors to PwnFox header values", () => {
   assert.strictEqual(Shared.getPwnFoxColorValue("turquoise"), "cyan");
+  assert.strictEqual(Shared.getPwnFoxColorValue("cyan"), "cyan");
   assert.strictEqual(Shared.getPwnFoxColorValue("purple"), "magenta");
+  assert.strictEqual(Shared.getPwnFoxColorValue("violet"), "magenta");
   assert.strictEqual(Shared.getPwnFoxColorValue("pink"), "pink");
-  assert.strictEqual(Shared.getPwnFoxColorValue("toolbar"), "toolbar");
+  assert.strictEqual(Shared.getPwnFoxColorValue("toolbar"), "gray");
+  assert.strictEqual(Shared.getPwnFoxColorValue("gray"), "gray");
 });
 
 test("derives slot metadata from live container order", () => {
@@ -4720,7 +4762,7 @@ test("compiles runtime state for proxies, headers and PwnFox", () => {
   assert.deepStrictEqual(
     runtime.headerRuntime.planByContainerId["firefox-container-1"].headers,
     [
-      { name: "X-PwnFox-Color", value: "toolbar" },
+      { name: "X-PwnFox-Color", value: "gray" },
       { id: "g1", name: "X-Global", value: "1" },
       { id: "c1", name: "X-Scoped", value: "2" },
     ],

@@ -1,17 +1,6 @@
 const Shared = globalThis.PrivacyContainersShared;
 const ConfigTransfer = globalThis.PrivacyContainersConfigTransfer;
-
-const FALLBACK_COLOR_CHOICES = [
-  { color: "red", colorCode: "#d1242f" },
-  { color: "orange", colorCode: "#f18f01" },
-  { color: "yellow", colorCode: "#ffd60a" },
-  { color: "green", colorCode: "#2da44e" },
-  { color: "blue", colorCode: "#218bff" },
-  { color: "pink", colorCode: "#d63384" },
-  { color: "purple", colorCode: "#8250df" },
-  { color: "turquoise", colorCode: "#1fb6aa" },
-  { color: "toolbar", colorCode: "#8c959f" },
-];
+const IdentityChoices = globalThis.PrivacyContainersIdentityChoices;
 
 const ICON_SVG_BY_NAME = {
   fingerprint:
@@ -2316,12 +2305,12 @@ async function createContainerAndFocus() {
   const icon = pickRandomPropertyValue(
     state.iconChoices,
     "icon",
-    Shared.CONTEXTUAL_ICONS[0] || "circle",
+    IdentityChoices.FALLBACK_ICONS[0]?.icon || "circle",
   );
   const color = pickRandomPropertyValue(
     state.colorChoices,
     "color",
-    FALLBACK_COLOR_CHOICES[0]?.color || "blue",
+    IdentityChoices.FALLBACK_COLORS[0]?.color || "blue",
   );
 
   const created = await browser.contextualIdentities.create({
@@ -2584,13 +2573,12 @@ function markDraftDirty() {
 
 async function refreshState(options) {
   const preserveDraft = Boolean(options && options.preserveDraft);
-  const [bundle, containers, commands, colorChoices, iconChoices] =
+  const [bundle, containers, commands, identityChoices] =
     await Promise.all([
       Shared.loadConfigBundle(),
       browser.contextualIdentities.query({}),
       browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
-      Promise.resolve(FALLBACK_COLOR_CHOICES),
-      Promise.resolve(Shared.CONTEXTUAL_ICONS.map((icon) => ({ icon }))),
+      IdentityChoices.getSupportedIdentityChoices(browser),
     ]);
 
   if (!preserveDraft || (!state.dirty && !state.saveInFlight)) {
@@ -2600,8 +2588,8 @@ async function refreshState(options) {
   }
   state.containers = containers;
   state.commands = commands;
-  state.colorChoices = colorChoices;
-  state.iconChoices = iconChoices;
+  state.colorChoices = identityChoices.colors;
+  state.iconChoices = identityChoices.icons;
 }
 
 async function refreshCommands() {

@@ -81,29 +81,17 @@
   const FIREFOX_TO_PWNFOX_COLORS = {
     blue: "blue",
     turquoise: "cyan",
+    cyan: "cyan",
     green: "green",
     yellow: "yellow",
     orange: "orange",
     red: "red",
     pink: "pink",
     purple: "magenta",
-    toolbar: "toolbar",
+    violet: "magenta",
+    toolbar: "gray",
+    gray: "gray",
   };
-  const CONTEXTUAL_ICONS = [
-    "fingerprint",
-    "briefcase",
-    "dollar",
-    "cart",
-    "circle",
-    "gift",
-    "vacation",
-    "food",
-    "fruit",
-    "pet",
-    "tree",
-    "chill",
-    "fence",
-  ];
   const DEFAULT_TELEMETRY_HOSTS = [
     "firefox-settings-attachments.cdn.mozilla.net",
     "detectportal.firefox.com",
@@ -2639,12 +2627,6 @@
     }
   }
 
-  function getRandomContainerIcon() {
-    return CONTEXTUAL_ICONS[
-      Math.floor(Math.random() * CONTEXTUAL_ICONS.length)
-    ];
-  }
-
   function createConfigBundle(config, meta) {
     const normalizedConfig = normalizeConfig(config);
     const sourceMeta = meta && typeof meta === "object" ? meta : {};
@@ -2756,7 +2738,6 @@
     BLOCKED_REOPEN_PREFIXES,
     CONFIG_KEY,
     CONFIG_SCHEMA_VERSION,
-    CONTEXTUAL_ICONS,
     DEFAULT_TELEMETRY_HOSTS: uniqueSortedHosts(DEFAULT_TELEMETRY_HOSTS, []),
     FIREFOX_DEFAULT_CONTAINER,
     FIREFOX_TO_PWNFOX_COLORS: { ...FIREFOX_TO_PWNFOX_COLORS },
@@ -2829,7 +2810,6 @@
     getProxyTypePolicy,
     getProxyStatus,
     getPwnFoxColorValue,
-    getRandomContainerIcon,
     getReopenContainerSlotCommandName,
     resolveProxyAssignment,
     getShortcutActivationIssue,
