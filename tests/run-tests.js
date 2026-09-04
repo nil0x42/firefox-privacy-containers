@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
 import Shared from "../utils/shared.js";
 import ConfigTransfer from "../options/config-transfer.js";
@@ -23,8 +24,6 @@ import {
 } from "../domain/ui-state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const tests = [];
 
 const OPTIONS_CSS_PATH = path.join(__dirname, "..", "options", "app.css");
 
@@ -54,10 +53,6 @@ function getContrastRatio(firstColor, secondColor) {
   const lighter = Math.max(firstLuminance, secondLuminance);
   const darker = Math.min(firstLuminance, secondLuminance);
   return (lighter + 0.05) / (darker + 0.05);
-}
-
-function test(name, fn) {
-  tests.push({ name, fn });
 }
 
 function testCases(cases, runCase) {
@@ -5355,21 +5350,4 @@ test("marks direct proxy plans that do not need per-request URL parsing", () => 
   assert.strictEqual(fastPlan.requiresRequestTarget, false);
   assert.strictEqual(guardedPlan.requiresRequestTarget, true);
   assert.strictEqual(fastPlan.bypassMatcher.hasMatchers, false);
-});
-
-async function run() {
-  for (const entry of tests) {
-    try {
-      await entry.fn();
-      process.stdout.write(`ok - ${entry.name}\n`);
-    } catch (error) {
-      process.stderr.write(`not ok - ${entry.name}\n${error.stack}\n`);
-      process.exitCode = 1;
-    }
-  }
-}
-
-run().catch((error) => {
-  process.stderr.write(`${error.stack}\n`);
-  process.exitCode = 1;
 });

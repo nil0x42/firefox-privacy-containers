@@ -12,7 +12,7 @@
     "lint": "web-ext lint --source-dir . --ignore-files '*.md' package.json package-lock.json 'tests/**' 'dev/**' '.github/**' 'dist/**'",
     "package": "bash dev/package-addon.sh",
     "package:check": "bash dev/check-package.sh",
-    "test": "node tests/run-tests.js"
+    "test": "node --test tests/*.test.js tests/run-tests.js"
   },
   "devDependencies": {
     "web-ext": "10.6.0"
