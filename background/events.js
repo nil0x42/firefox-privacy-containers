@@ -3,14 +3,15 @@ export function createEventBinder(deps) {
       state,
       browser,
       Shared,
-      constants,
       lifecycle,
       blockedPageStore,
       badges,
       shortcuts,
       tabIndex,
       configService,
+      requestHandlers,
     } = deps;
+    let eventsBound = false;
 
     function handleRuntimeMessage(message, sender) {
       if (!message || typeof message.type !== "string") {
@@ -50,6 +51,29 @@ export function createEventBinder(deps) {
     }
 
     function bindBrowserEvents() {
+      if (eventsBound) {
+        return;
+      }
+      eventsBound = true;
+
+      const networkFilter = { urls: Shared.NETWORK_REQUEST_URL_PATTERNS };
+      browser.proxy.onRequest.addListener(requestHandlers.setProxy, networkFilter);
+      browser.webRequest.onBeforeSendHeaders.addListener(
+        requestHandlers.addHeaders,
+        networkFilter,
+        ["blocking", "requestHeaders"],
+      );
+      browser.webRequest.onAuthRequired.addListener(
+        requestHandlers.onAuthRequired,
+        networkFilter,
+        ["blocking"],
+      );
+      browser.webRequest.onBeforeRequest.addListener(
+        requestHandlers.enforceHostRules,
+        networkFilter,
+        ["blocking"],
+      );
+
       browser.contextualIdentities.onCreated.addListener((change) => {
         lifecycle.handleContainerCreated(change.contextualIdentity).catch(() => undefined);
       });
@@ -71,6 +95,25 @@ export function createEventBinder(deps) {
       }
 
       browser.runtime.onMessage.addListener(handleRuntimeMessage);
+
+      browser.runtime.onStartup.addListener(() => {
+        return Promise.all([
+          lifecycle.reconcileBrowserState(),
+          blockedPageStore.cleanupPersistedEntries(),
+        ]).catch((error) => {
+          console.error("Failed to reconcile browser state", error);
+        });
+      });
+
+      browser.runtime.onInstalled.addListener(() => {
+        return Promise.all([
+          browser.storage.local.remove("blockedPageEntries"),
+          blockedPageStore.cleanupPersistedEntries(),
+          lifecycle.reconcileBrowserState(),
+        ]).catch((error) => {
+          console.error("Failed to reconcile installed extension state", error);
+        });
+      });
 
       browser.commands.onCommand.addListener((commandName) => {
         shortcuts.handleCommand(commandName).catch((error) => {

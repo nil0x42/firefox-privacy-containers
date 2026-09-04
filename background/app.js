@@ -21,7 +21,6 @@ import { createBlockedPageStore } from "./blocked-page-store.js";
 import { createBadgeManager } from "./badges.js";
 import { createShortcutManager } from "./shortcuts.js";
 import { createRequestHandlers } from "./request-handlers.js";
-import { createNetworkListenerManager } from "./network-listeners.js";
 import { createLifecycleController } from "./lifecycle.js";
 import { createEventBinder } from "./events.js";
 import { createConfigService } from "./config-service.js";
@@ -86,13 +85,9 @@ export function createBackgroundApp(deps = {}) {
     browser: browserApi,
     tabIndex,
   });
-  let networkListenerManager = null;
   const runtimeManager = createRuntimeManager({
     Shared: sharedApi,
     state,
-    syncNetworkListeners() {
-      networkListenerManager?.syncNetworkListeners();
-    },
     onRoutingReady: markRoutingReady,
   });
   let lifecycle = null;
@@ -118,12 +113,6 @@ export function createBackgroundApp(deps = {}) {
     requestContextCache,
     state,
     waitForRoutingReady: () => routingReadyPromise,
-  });
-  networkListenerManager = createNetworkListenerManager({
-    Shared: sharedApi,
-    browser: browserApi,
-    requestHandlers,
-    state,
   });
   const badges = createBadgeManager({
     Shared: sharedApi,
@@ -160,6 +149,7 @@ export function createBackgroundApp(deps = {}) {
     constants,
     configService,
     lifecycle,
+    requestHandlers,
     shortcuts,
     state,
     tabIndex,
@@ -167,7 +157,6 @@ export function createBackgroundApp(deps = {}) {
 
   function bindBrowserEvents() {
     // Event-page listeners must be registered synchronously during startup.
-    networkListenerManager.syncNetworkListeners();
     events.bindBrowserEvents();
   }
 
@@ -204,7 +193,6 @@ export function createBackgroundApp(deps = {}) {
     setTrackedTabs: tabIndex.setTrackedTabs,
     setProxy: requestHandlers.setProxy,
     state,
-    syncNetworkListeners: networkListenerManager.syncNetworkListeners,
     updateAllBadges: badges.updateAllBadges,
     updateBadgeForTab: badges.updateBadgeForTab,
     updateBadgesForContainers: badges.updateBadgesForContainers,

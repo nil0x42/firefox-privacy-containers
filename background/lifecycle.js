@@ -11,6 +11,7 @@ export function createLifecycleController(deps) {
       shortcuts,
       configService,
     } = deps;
+    let initializationPromise = null;
 
     async function refreshTabCache() {
       const tabs = await browser.tabs.query({});
@@ -218,10 +219,21 @@ export function createLifecycleController(deps) {
       await cleanupRemovedContainer(cookieStoreId);
     }
 
-    async function initialize() {
+    async function initializeOnce() {
       runtimeManager.applyConfigBundle(await configService.initialize());
       await Promise.all([containerCache.refreshContainerCache(), refreshTabCache()]);
       runtimeManager.rebuildRuntime();
+    }
+
+    function initialize() {
+      if (!initializationPromise) {
+        initializationPromise = initializeOnce();
+      }
+      return initializationPromise;
+    }
+
+    async function reconcileBrowserState() {
+      await initialize();
       await Promise.all([
         badges.updateAllBadges(),
         shortcuts.refreshCommandDescriptions(),
@@ -236,5 +248,6 @@ export function createLifecycleController(deps) {
       handleContainersChangedMessage,
       initialize,
       mutateConfig,
+      reconcileBrowserState,
     };
   }

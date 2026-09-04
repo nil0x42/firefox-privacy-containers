@@ -1,10 +1,5 @@
 export function createRuntimeManager(deps) {
-    const {
-      state,
-      Shared,
-      syncNetworkListeners,
-      onRoutingReady = () => undefined,
-    } = deps;
+    const { state, Shared, onRoutingReady = () => undefined } = deps;
 
     function sortEntriesByKey(entries) {
       return entries
@@ -103,7 +98,6 @@ export function createRuntimeManager(deps) {
       }
 
       state.runtime = nextRuntime;
-      syncNetworkListeners();
     }
 
     function rebuildRuntime() {

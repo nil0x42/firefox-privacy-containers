@@ -18,7 +18,7 @@ export function createShortcutManager(deps) {
     }
 
     async function refreshCommandDescriptions() {
-      if (!browser.commands || !browser.commands.update) {
+      if (!browser.commands?.getAll || !browser.commands.update) {
         return;
       }
 
@@ -51,23 +51,22 @@ export function createShortcutManager(deps) {
         );
       }
 
+      const currentDescriptions = new Map(
+        (await browser.commands.getAll()).map((command) => [
+          command.name,
+          command.description || "",
+        ]),
+      );
       const updates = [];
       desiredDescriptions.forEach((description, name) => {
-        if (state.commandDescriptionByName.get(name) !== description) {
+        if (currentDescriptions.get(name) !== description) {
           updates.push({ name, description });
         }
       });
 
-      const results = await Promise.allSettled(
+      await Promise.allSettled(
         updates.map((update) => browser.commands.update(update)),
       );
-
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          const update = updates[index];
-          state.commandDescriptionByName.set(update.name, update.description);
-        }
-      });
     }
 
     async function openContainerSlot(slot) {

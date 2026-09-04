@@ -12,7 +12,6 @@ export function createBackgroundState(Shared) {
     return {
       badgeTextByTabId: new Map(),
       commandErrorTimerByTabId: new Map(),
-      commandDescriptionByName: new Map(),
       config: Shared.createDefaultConfig(),
       configMeta: Shared.createConfigBundle(Shared.createDefaultConfig(), {}).meta,
       tabCookieStoreIdByTabId: new Map(),
@@ -23,18 +22,6 @@ export function createBackgroundState(Shared) {
       requestContextCachePrimary: createEmptyRequestContextCacheSlot(),
       requestContextCacheSecondary: createEmptyRequestContextCacheSlot(),
       routingReady: false,
-      listeners: {
-        auth: false,
-        headers: false,
-        hostRules: false,
-        proxy: false,
-      },
-      networkListenerPatternsByKey: {
-        auth: null,
-        headers: null,
-        hostRules: null,
-        proxy: null,
-      },
       runtime: Shared.compileRuntime(Shared.createDefaultConfig(), []),
     };
   }

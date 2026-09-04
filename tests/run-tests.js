@@ -3140,24 +3140,18 @@ test("rebuilds selected runtime slices in the extracted runtime manager module",
     ],
     runtime: Shared.compileRuntime(Shared.createDefaultConfig(), []),
   };
-  let syncCalls = 0;
   const runtimeManager = createRuntimeManager({
     Shared,
     state,
-    syncNetworkListeners() {
-      syncCalls += 1;
-    },
   });
 
   runtimeManager.refreshRuntimeParts(["proxy", "hostRules"]);
 
-  assert.strictEqual(syncCalls, 1);
   assert.strictEqual(state.runtime.proxyRuntime.hasAnyAssignments, false);
   assert.strictEqual(state.runtime.headerRuntime.hasAnyWork, false);
   assert.strictEqual(state.runtime.hostRuleRuntime.hasAnyEnabledRules, true);
 
   runtimeManager.refreshRuntimeParts(["headers", "shortcuts"]);
-  assert.strictEqual(syncCalls, 2);
   assert.strictEqual(state.runtime.headerRuntime.hasAnyWork, true);
   assert.deepStrictEqual(state.runtime.shortcutRuntime.containerIdBySlot, [
     Shared.FIREFOX_DEFAULT_CONTAINER,
@@ -3178,10 +3172,12 @@ test("refreshes fixed shortcut command descriptions including tab commands", asy
           ),
         },
       },
-      commandDescriptionByName: new Map(),
     },
     browser: {
       commands: {
+        async getAll() {
+          return [];
+        },
         async update(update) {
           updates.push(update);
         },
@@ -3254,7 +3250,6 @@ test("dispatches each fixed tab command to the matching tab action", async () =>
           ),
         },
       },
-      commandDescriptionByName: new Map(),
     },
     browser: {},
     containerCache: {
@@ -3360,9 +3355,11 @@ function loadBackgroundModule() {
     },
     runtime: {
       getURL: (targetPath) => `moz-extension://test/${targetPath}`,
+      onInstalled: createEventTarget(),
       onMessage: {
         addListener() {},
       },
+      onStartup: createEventTarget(),
     },
     storage: {
       onChanged: {
@@ -3387,6 +3384,10 @@ function loadBackgroundModule() {
       onCommand: {
         addListener() {},
       },
+      async getAll() {
+        return [];
+      },
+      async update() {},
     },
     tabs: {
       byId: new Map(),
@@ -3482,6 +3483,13 @@ test("registers all network listeners synchronously and only once", () => {
     );
     assert.strictEqual(ctx.browserMock.webRequest.onBeforeRequest.listeners.length, 1);
 
+    ctx.background.bindBrowserEvents();
+    assert.strictEqual(ctx.browserMock.proxy.onRequest.listeners.length, 1);
+    assert.strictEqual(
+      ctx.browserMock.webRequest.onBeforeSendHeaders.listeners.length,
+      1,
+    );
+
     ctx.background.setContainerCache([]);
     ctx.background.state.config = Shared.normalizeConfig({ hostRules: [] });
     ctx.background.rebuildRuntime();
@@ -3495,6 +3503,43 @@ test("registers all network listeners synchronously and only once", () => {
       1,
     );
     assert.strictEqual(ctx.browserMock.webRequest.onBeforeRequest.listeners.length, 1);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("initializes once and reconciles browser-owned state on startup", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.bindBrowserEvents();
+    await Promise.all([ctx.background.initialize(), ctx.background.initialize()]);
+    assert.strictEqual(ctx.browserMock.tabs.queried, 1);
+
+    const startupListener = ctx.browserMock.runtime.onStartup.listeners[0].listener;
+    await startupListener();
+
+    assert.strictEqual(ctx.browserMock.tabs.queried, 1);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("removes obsolete local navigation state when the extension is installed", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.browserMock.storage.local.state.blockedPageEntries = [{ id: "old" }];
+    ctx.background.bindBrowserEvents();
+
+    const installedListener =
+      ctx.browserMock.runtime.onInstalled.listeners[0].listener;
+    await installedListener();
+
+    assert.strictEqual(
+      Object.hasOwn(ctx.browserMock.storage.local.state, "blockedPageEntries"),
+      false,
+    );
   } finally {
     ctx.cleanup();
   }
@@ -3841,6 +3886,7 @@ test("blocks requests when a container references an invalid proxy", () => {
   const ctx = loadBackgroundModule();
 
   try {
+    ctx.background.bindBrowserEvents();
     ctx.background.setContainerCache([]);
     ctx.background.state.config = Shared.normalizeConfig({
       proxies: [
