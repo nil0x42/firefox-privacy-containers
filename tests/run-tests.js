@@ -239,6 +239,28 @@ test("declares a Firefox Manifest V3 event page without widening host access", (
   assert.deepStrictEqual(manifest.host_permissions, ["<all_urls>"]);
   assert.strictEqual(manifest.permissions.includes("<all_urls>"), false);
   assert.ok(manifest.permissions.includes("webRequestBlocking"));
+  assert.deepStrictEqual(manifest.icons, {
+    48: "res/icon-48.png",
+    96: "res/icon-96.png",
+    512: "res/icon.png",
+  });
+  assert.deepStrictEqual(manifest.action.default_icon, {
+    48: "res/icon-48.png",
+    96: "res/icon-96.png",
+  });
+  assert.deepStrictEqual(manifest.content_security_policy, {
+    extension_pages: "script-src 'self'; object-src 'none'",
+  });
+  for (const [filename, expectedSize] of [
+    ["icon-48.png", 48],
+    ["icon-96.png", 96],
+    ["icon.png", 512],
+  ]) {
+    const png = fs.readFileSync(path.join(__dirname, "..", "res", filename));
+    assert.equal(png.subarray(1, 4).toString(), "PNG");
+    assert.equal(png.readUInt32BE(16), expectedSize);
+    assert.equal(png.readUInt32BE(20), expectedSize);
+  }
   assert.deepStrictEqual(manifest.web_accessible_resources, [
     {
       resources: [

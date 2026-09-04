@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "description": "Isolated browser containers with per-container proxy routing",
   "icons": {
+    "48": "res/icon-48.png",
+    "96": "res/icon-96.png",
     "512": "res/icon.png"
   },
   "browser_specific_settings": {
@@ -30,13 +32,19 @@
     "<all_urls>"
   ],
   "action": {
-    "default_icon": "res/icon.png",
+    "default_icon": {
+      "48": "res/icon-48.png",
+      "96": "res/icon-96.png"
+    },
     "default_title": "Privacy Containers",
     "default_popup": "popup/popup.html"
   },
   "background": {
     "scripts": ["background/app.js"],
     "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
   },
   "web_accessible_resources": [
     {
