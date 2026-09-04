@@ -2654,8 +2654,37 @@
     );
   }
 
+  function createConfigError(code, message) {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  }
+
   function normalizeConfigBundle(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw createConfigError(
+        "CONFIG_INVALID",
+        "The stored configuration is not a valid object.",
+      );
+    }
+
     if (isConfigBundle(value)) {
+      const schemaVersion = value.meta.schemaVersion;
+      if (
+        schemaVersion !== undefined &&
+        (!Number.isInteger(schemaVersion) || schemaVersion < 0)
+      ) {
+        throw createConfigError(
+          "CONFIG_INVALID",
+          "The stored configuration has an invalid schema version.",
+        );
+      }
+      if (schemaVersion > CONFIG_SCHEMA_VERSION) {
+        throw createConfigError(
+          "CONFIG_VERSION_UNSUPPORTED",
+          `Configuration schema ${schemaVersion} is newer than supported schema ${CONFIG_SCHEMA_VERSION}.`,
+        );
+      }
       return createConfigBundle(value.config, value.meta);
     }
 
@@ -2667,19 +2696,12 @@
     const storedConfig = storage[CONFIG_KEY];
 
     if (!storedConfig) {
-      const defaults = createConfigBundle(createDefaultConfig(), {
+      return createConfigBundle(createDefaultConfig(), {
         revision: 0,
       });
-      await browser.storage.local.set({ [CONFIG_KEY]: defaults });
-      return defaults;
     }
 
-    const normalized = normalizeConfigBundle(storedConfig);
-    if (JSON.stringify(normalized) !== JSON.stringify(storedConfig)) {
-      await browser.storage.local.set({ [CONFIG_KEY]: normalized });
-    }
-
-    return normalized;
+    return normalizeConfigBundle(storedConfig);
   }
 
   function createConflictError(message, bundle) {
