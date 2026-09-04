@@ -8,6 +8,10 @@ import {
 import * as OptionsUi from "../domain/ui-state.js";
 import * as Container from "../domain/containers.js";
 import * as Shortcut from "../domain/shortcuts.js";
+import {
+  createConfigDraftController,
+  createOptionsState,
+} from "./state.js";
 
 const ICON_SVG_BY_NAME = {
   fingerprint:
@@ -107,46 +111,7 @@ const CARD_COLLECTIONS = Object.freeze({
   }),
 });
 
-function createWriterId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-const state = {
-  activeTab: "containers",
-  colorChoices: [],
-  commands: [],
-  config: Shared.createDefaultConfig(),
-  containers: [],
-  iconChoices: [],
-  openContainerIdentityPopoverAnchorRect: null,
-  openContainerIdentityPopoverCookieStoreId: "",
-  openContainerIdentityPopoverPlacement: null,
-  pendingInteractions: {
-    containers: { reorder: null, scrollAnchor: null, insert: null },
-    proxies: { reorder: null, scrollAnchor: null, insert: null },
-    hostRules: { reorder: null, scrollAnchor: null, insert: null },
-  },
-  pendingIdentitySaves: new Map(),
-  pendingSaveMessage: "Saved.",
-  persistedConfig: Shared.createDefaultConfig(),
-  persistedMeta: Shared.createConfigBundle(Shared.createDefaultConfig(), {}).meta,
-  saveBlockedReason: "",
-  draftVersion: 0,
-  dirty: false,
-  suppressSaveStatus: false,
-  suppressCommandChangeEvents: 0,
-  transferBusy: false,
-  transferInstanceId: "",
-  transferPlatform: "",
-  saveInFlight: false,
-  savePromise: Promise.resolve(),
-  saveTimer: 0,
-  writerId: createWriterId("options"),
-  pendingFocusRestore: null,
-  dismissedStatusSignature: "",
-  lastStatusSignature: "",
-  statusIsError: false,
-};
+const state = createOptionsState();
 
 let containerIdentityPopoverFrame = 0;
 let stickyHeaderMeasureFrame = 0;
@@ -490,6 +455,22 @@ function setConfigReloadBlockedStatus() {
   state.saveBlockedReason = CONFIG_RELOAD_MESSAGE;
   setStatus(state.saveBlockedReason, true);
 }
+
+const {
+  discardPendingConfigDraft,
+  flushConfigSave,
+  persistConfigNow,
+  scheduleConfigSave,
+  setPersistedBundle,
+  syncDraftWithPersistedBundle,
+} = createConfigDraftController({
+  state,
+  saveConfigBundle,
+  setStatus,
+  clearStatus,
+  setConflictStatus: setConfigReloadBlockedStatus,
+  timerApi: globalThis.window || globalThis,
+});
 
 function createHelp(text) {
   const help = document.createElement("button");
@@ -2561,25 +2542,6 @@ async function createHostRuleAndFocus() {
   });
 }
 
-function setPersistedBundle(bundle) {
-  const normalizedBundle = Shared.normalizeConfigBundle(bundle);
-  state.persistedConfig = normalizedBundle.config;
-  state.persistedMeta = normalizedBundle.meta;
-}
-
-function syncDraftWithPersistedBundle(bundle) {
-  setPersistedBundle(bundle);
-  state.config = Shared.clone(state.persistedConfig);
-  state.draftVersion += 1;
-  state.dirty = false;
-  state.saveBlockedReason = "";
-}
-
-function markDraftDirty() {
-  state.dirty = true;
-  state.draftVersion += 1;
-}
-
 async function refreshState(options) {
   const preserveDraft = Boolean(options && options.preserveDraft);
   const [bundle, containers, commands, identityChoices, uiState] =
@@ -3613,111 +3575,6 @@ async function swapShortcutAssignmentsBetweenSlots(slotA, slotB) {
   };
 }
 
-function scheduleConfigSave(delay, message) {
-  state.pendingSaveMessage = message || "Saved.";
-  state.suppressSaveStatus = false;
-  markDraftDirty();
-
-  if (state.saveBlockedReason) {
-    setStatus(state.saveBlockedReason, true);
-    return;
-  }
-
-  setStatus("Saving...", false);
-
-  if (state.saveTimer) {
-    window.clearTimeout(state.saveTimer);
-  }
-
-  if (delay <= 0) {
-    state.saveTimer = 0;
-    flushConfigSave().catch((error) => {
-      setStatus(error.message, true);
-    });
-    return;
-  }
-
-  state.saveTimer = window.setTimeout(() => {
-    flushConfigSave().catch((error) => {
-      setStatus(error.message, true);
-    });
-  }, delay);
-}
-
-async function flushConfigSave() {
-  if (state.saveBlockedReason) {
-    throw new Error(state.saveBlockedReason);
-  }
-
-  if (state.saveTimer) {
-    window.clearTimeout(state.saveTimer);
-    state.saveTimer = 0;
-  }
-
-  if (state.saveInFlight) {
-    await state.savePromise;
-    if (state.dirty) {
-      return flushConfigSave();
-    }
-    return state.savePromise;
-  }
-
-  if (!state.dirty) {
-    return state.savePromise;
-  }
-
-  state.saveInFlight = true;
-  const snapshot = Shared.clone(state.config);
-  const expectedRevision = state.persistedMeta.revision;
-  const requestedDraftVersion = state.draftVersion;
-  const successMessage = state.pendingSaveMessage;
-  const suppressSaveStatus = state.suppressSaveStatus;
-  if (!suppressSaveStatus) {
-    setStatus("Saving...", false);
-  }
-  state.dirty = false;
-
-  state.savePromise = saveConfigBundle(
-    expectedRevision,
-    snapshot,
-  )
-    .then((savedBundle) => {
-      setPersistedBundle(savedBundle);
-
-      if (state.draftVersion === requestedDraftVersion) {
-        state.config = Shared.clone(savedBundle.config);
-      }
-
-      if (suppressSaveStatus) {
-        clearStatus();
-      } else if (state.draftVersion === requestedDraftVersion && !state.dirty) {
-        setStatus(successMessage, false);
-      } else {
-        setStatus("Saving...", false);
-      }
-    })
-    .catch((error) => {
-      if (error && error.code === "CONFIG_CONFLICT") {
-        setConfigReloadBlockedStatus();
-      }
-
-      state.dirty = true;
-      throw error;
-    })
-    .finally(() => {
-      state.saveInFlight = false;
-      state.suppressSaveStatus = false;
-    });
-
-  await state.savePromise;
-
-  if (state.dirty) {
-    return flushConfigSave();
-  }
-
-  return state.savePromise;
-}
-
 function getOrCreatePendingIdentitySave(cookieStoreId) {
   if (!state.pendingIdentitySaves.has(cookieStoreId)) {
     state.pendingIdentitySaves.set(cookieStoreId, {
@@ -3814,29 +3671,6 @@ async function flushPendingIdentitySaves() {
   });
 
   await Promise.all(tasks);
-}
-
-async function persistConfigNow(message, options) {
-  markDraftDirty();
-  state.pendingSaveMessage = message || "Saved.";
-  state.suppressSaveStatus = Boolean(options && options.silentStatus);
-
-  if (state.saveTimer) {
-    window.clearTimeout(state.saveTimer);
-    state.saveTimer = 0;
-  }
-
-  await flushConfigSave();
-}
-
-function discardPendingConfigDraft() {
-  if (state.saveTimer) {
-    window.clearTimeout(state.saveTimer);
-    state.saveTimer = 0;
-  }
-
-  state.dirty = false;
-  state.saveBlockedReason = "";
 }
 
 async function reloadPersistedState() {
