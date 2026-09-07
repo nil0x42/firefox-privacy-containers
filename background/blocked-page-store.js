@@ -1,6 +1,7 @@
 import { showNotification } from "./notifications.js";
 import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
 import { canReopenTabUrl } from "../domain/tabs.js";
+import { isRecord } from "../domain/values.js";
 
 export function createBlockedPageStore(deps) {
     const {
@@ -42,10 +43,15 @@ export function createBlockedPageStore(deps) {
 
     function isUsableStoredEntry(entry) {
       return (
-        entry &&
-        typeof entry === "object" &&
+        isRecord(entry) &&
         typeof entry.id === "string" &&
-        typeof entry.createdAt === "number"
+        Boolean(entry.id) &&
+        Number.isFinite(entry.createdAt) &&
+        (entry.tabId === null || Number.isInteger(entry.tabId)) &&
+        typeof entry.url === "string" &&
+        (entry.mode === "blacklist" || entry.mode === "whitelist") &&
+        isRecord(entry.blockedContainer) &&
+        Array.isArray(entry.allowedContainers)
       );
     }
 
@@ -53,22 +59,32 @@ export function createBlockedPageStore(deps) {
       return `${constants.BLOCKED_PAGE_STORAGE_PREFIX}${entryId}`;
     }
 
-    function getStoredEntries(payload) {
-      return Object.entries(payload || {})
-        .filter(([key, entry]) =>
-          key.startsWith(constants.BLOCKED_PAGE_STORAGE_PREFIX) &&
-          isUsableStoredEntry(entry),
-        )
-        .map(([key, entry]) => ({ key, entry }));
+    function parseStoredEntries(payload) {
+      const entries = [];
+      const invalidKeys = [];
+
+      Object.entries(payload || {}).forEach(([key, entry]) => {
+        if (!key.startsWith(constants.BLOCKED_PAGE_STORAGE_PREFIX)) {
+          return;
+        }
+        if (isUsableStoredEntry(entry) && key === getStorageKey(entry.id)) {
+          entries.push({ key, entry });
+          return;
+        }
+        invalidKeys.push(key);
+      });
+
+      return { entries, invalidKeys };
     }
 
     async function cleanupPersistedEntries(now) {
       const staleThreshold =
         (Number.isFinite(now) ? now : Date.now()) -
         constants.BLOCKED_PAGE_ENTRY_TTL_MS;
-      const storedEntries = getStoredEntries(
-        await browser.storage.session.get(null),
-      ).sort((left, right) => left.entry.createdAt - right.entry.createdAt);
+      const parsed = parseStoredEntries(await browser.storage.session.get(null));
+      const storedEntries = parsed.entries.sort(
+        (left, right) => left.entry.createdAt - right.entry.createdAt,
+      );
       const retained = storedEntries.filter(
         ({ entry }) => entry.createdAt >= staleThreshold,
       );
@@ -77,6 +93,7 @@ export function createBlockedPageStore(deps) {
         retained.length - constants.BLOCKED_PAGE_MAX_ENTRIES,
       );
       const keysToRemove = [
+        ...parsed.invalidKeys,
         ...storedEntries
           .filter(({ entry }) => entry.createdAt < staleThreshold)
           .map(({ key }) => key),
@@ -109,7 +126,9 @@ export function createBlockedPageStore(deps) {
         return;
       }
 
-      const keys = getStoredEntries(await browser.storage.session.get(null))
+      const keys = parseStoredEntries(
+        await browser.storage.session.get(null),
+      ).entries
         .filter(({ entry }) => entry.tabId === tabId)
         .map(({ key }) => key);
       if (keys.length) {
@@ -129,7 +148,7 @@ export function createBlockedPageStore(deps) {
         !isUsableStoredEntry(entry) ||
         entry.createdAt + constants.BLOCKED_PAGE_ENTRY_TTL_MS <= Date.now()
       ) {
-        if (entry) {
+        if (Object.hasOwn(payload, key)) {
           await browser.storage.session.remove(key);
         }
         return null;

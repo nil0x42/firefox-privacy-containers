@@ -4741,6 +4741,62 @@ test("persists concurrent blocked-page contexts under independent session keys",
   }
 });
 
+test("purges invalid, stale and excess blocked-page session contexts", async () => {
+  const now = 10_000;
+  const prefix = "blockedContext:";
+  const entry = (id, createdAt) => ({
+    id,
+    createdAt,
+    tabId: 7,
+    url: "https://example.com/",
+    mode: "blacklist",
+    blockedContainer: { cookieStoreId: "firefox-container-9" },
+    allowedContainers: [],
+  });
+  const values = {
+    unrelated: { value: true },
+    [`${prefix}invalid`]: { id: 7 },
+    [`${prefix}wrong-key`]: entry("different-id", now),
+    [`${prefix}stale`]: entry("stale", now - 1_001),
+    [`${prefix}oldest`]: entry("oldest", now - 500),
+    [`${prefix}newest`]: entry("newest", now - 100),
+  };
+  const removals = [];
+  const browser = {
+    storage: {
+      session: {
+        async get() {
+          return { ...values };
+        },
+        async remove(keys) {
+          removals.push(keys);
+          keys.forEach((key) => delete values[key]);
+        },
+      },
+    },
+  };
+  const store = createBlockedPageStore({
+    browser,
+    constants: {
+      BLOCKED_PAGE_ENTRY_TTL_MS: 1_000,
+      BLOCKED_PAGE_MAX_ENTRIES: 1,
+      BLOCKED_PAGE_STORAGE_PREFIX: prefix,
+    },
+    state: { blockedPageEntries: new Map() },
+  });
+
+  await store.cleanupPersistedEntries(now);
+
+  assert.deepStrictEqual(removals, [[
+    `${prefix}invalid`,
+    `${prefix}wrong-key`,
+    `${prefix}stale`,
+    `${prefix}oldest`,
+  ]]);
+  assert.deepStrictEqual(values.unrelated, { value: true });
+  assert.deepStrictEqual(values[`${prefix}newest`], entry("newest", now - 100));
+});
+
 test("annotates blocked-page containers when live names are ambiguous", async () => {
   const ctx = loadBackgroundModule();
 
