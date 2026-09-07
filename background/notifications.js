@@ -6,11 +6,7 @@ export async function showNotification(browser, options) {
     return false;
   }
 
-  const notificationId = `${options.idPrefix}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
-
-  await browser.notifications.create(notificationId, {
+  await browser.notifications.create(options.id, {
     type: "basic",
     iconUrl: browser.runtime.getURL("res/icon.png"),
     title: options.title,
@@ -30,7 +26,7 @@ export function showCommandFailureNotification(browser, error) {
   const message = rawMessage.endsWith(".") ? rawMessage : `${rawMessage}.`;
 
   return showNotification(browser, {
-    idPrefix: "shortcut-failure",
+    id: "shortcut-failure",
     title: "Shortcut failed",
     message,
   });

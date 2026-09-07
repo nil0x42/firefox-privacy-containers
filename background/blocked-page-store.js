@@ -35,7 +35,7 @@ export function createBlockedPageStore(deps) {
       const ruleName = decision?.ruleName || "this Host Rule";
 
       await showNotification(browser, {
-        idPrefix: "auto-reopen",
+        id: "auto-reopen",
         title: `Link reopened in ${containerName}`,
         message: `Privacy Containers automatically reopened this link in "${containerName}" because the Host Rule "${ruleName}" only allows this host in that container.`,
       });
@@ -411,7 +411,6 @@ export function createBlockedPageStore(deps) {
         .then(async () => {
           try {
             await reopenBlockedMainFrameInContainer(details, targetCookieStoreId);
-            await showAutoReopenNotification(decision, targetCookieStoreId);
           } catch (error) {
             try {
               await navigateTabToBlockedPage(decision, details);
@@ -422,7 +421,13 @@ export function createBlockedPageStore(deps) {
               );
             }
             console.error("Failed to auto-reopen blocked navigation", error);
+            return;
           }
+          await showAutoReopenNotification(decision, targetCookieStoreId).catch(
+            (error) => {
+              console.error("Failed to show auto-reopen notification", error);
+            },
+          );
         });
     }
 

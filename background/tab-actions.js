@@ -14,7 +14,7 @@ export function createTabActions(deps) {
     async function showDefaultContainerNotification() {
       try {
         await showNotification(browser, {
-          idPrefix: "default-container-required",
+          id: "default-container-required",
           title: "Default container required",
           message: "This URL can only be opened in Firefox's default container.",
         });

@@ -17,6 +17,7 @@ import { createRequestHandlers } from "../background/request-handlers.js";
 import { createRequestContextCache } from "../background/request-context-cache.js";
 import { createRuntimeManager } from "../background/runtime-manager.js";
 import { createConfigService } from "../background/config-service.js";
+import { showNotification } from "../background/notifications.js";
 import {
   OPTIONS_UI_KEY,
   loadOptionsUi,
@@ -159,6 +160,36 @@ function createReopenBrowser(activeTab, options = {}) {
     },
   };
 }
+
+test("replaces notifications by purpose", async () => {
+  const created = [];
+  const browser = {
+    notifications: {
+      async create(id, details) {
+        created.push({ id, details });
+      },
+    },
+    runtime: {
+      getURL(pathname) {
+        return `moz-extension://test/${pathname}`;
+      },
+    },
+  };
+  const options = {
+    id: "shortcut-failure",
+    title: "Shortcut failed",
+    message: "First failure.",
+  };
+
+  await showNotification(browser, options);
+  await showNotification(browser, { ...options, message: "Second failure." });
+
+  assert.deepStrictEqual(created.map((entry) => entry.id), [
+    "shortcut-failure",
+    "shortcut-failure",
+  ]);
+  assert.strictEqual(await showNotification({}, options), false);
+});
 
 function createTransferFixture() {
   const containers = [
@@ -4262,6 +4293,64 @@ test("automatically reopens blocked main_frame requests when exactly one allowed
       ),
     );
   } finally {
+    ctx.cleanup();
+  }
+});
+
+test("does not fall back after an auto-reopen notification failure", async () => {
+  const ctx = loadBackgroundModule();
+  const originalConsoleError = console.error;
+
+  try {
+    ctx.background.setContainerCache([
+      {
+        cookieStoreId: "firefox-container-1",
+        name: "Work",
+        color: "blue",
+        iconUrl: "work.svg",
+      },
+    ]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-1",
+          name: "Work only",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: ["firefox-container-1"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+    ctx.browserMock.tabs.byId.set(7, {
+      id: 7,
+      windowId: 4,
+      index: 2,
+      pinned: false,
+    });
+    ctx.browserMock.notifications.create = async () => {
+      throw new Error("Notification unavailable");
+    };
+    console.error = () => undefined;
+
+    const result = await ctx.background.enforceHostRules({
+      url: "https://example.com/account",
+      type: "main_frame",
+      cookieStoreId: "firefox-container-9",
+      tabId: 7,
+    });
+
+    assert.deepStrictEqual(result, { cancel: true });
+    assert.strictEqual(ctx.browserMock.tabs.created.length, 1);
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, [7]);
+    assert.deepStrictEqual(ctx.browserMock.tabs.updated, []);
+    assert.strictEqual(
+      Object.keys(ctx.browserMock.storage.session.state).length,
+      0,
+    );
+  } finally {
+    console.error = originalConsoleError;
     ctx.cleanup();
   }
 });
