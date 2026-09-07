@@ -1231,7 +1231,7 @@ main {
   align-items: center;
   justify-content: center;
 
-  svg {
+  :is(svg, img) {
     width: 100%;
     height: 100%;
   }
@@ -1311,7 +1311,7 @@ button.firefox-pref-copy-button {
     color 160ms ease;
 }
 
-.identity-token svg {
+.identity-token :is(svg, img) {
   width: 1.15rem;
   height: 1.15rem;
 }
@@ -1465,7 +1465,7 @@ button.firefox-pref-copy-button {
   height: 1.08rem;
 }
 
-.container-identity-icon-glyph svg {
+.container-identity-icon-glyph :is(svg, img) {
   width: 100%;
   height: 100%;
 }

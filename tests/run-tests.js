@@ -347,6 +347,20 @@ test("uses Firefox identity choices when the browser exposes them", async () => 
   assert.deepStrictEqual(choices, { colors, icons });
 });
 
+test("renders Firefox-provided URLs for unknown container icons", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "options", "app.js"),
+    "utf8",
+  );
+  const css = fs.readFileSync(OPTIONS_CSS_PATH, "utf8");
+
+  assert.ok(source.includes("setIconGlyph(glyph, entry.icon, entry.iconUrl)"));
+  assert.ok(source.includes("target.ownerDocument.createElement(\"img\")"));
+  assert.ok(source.includes("image.alt = \"\""));
+  assert.ok(css.includes(".container-identity-icon-glyph :is(svg, img)"));
+  assert.ok(css.includes(".identity-token :is(svg, img)"));
+});
+
 test("falls back to Firefox 142 identity choices when discovery is unavailable", async () => {
   const missingApiChoices =
     await IdentityChoices.getSupportedIdentityChoices({ contextualIdentities: {} });

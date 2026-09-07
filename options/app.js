@@ -1631,13 +1631,7 @@ function createContainerReferenceTag({
     tag.style.removeProperty("--tag-accent");
   }
 
-  if (iconUrl) {
-    const image = document.createElement("img");
-    image.className = "host-rule-tag-icon";
-    image.src = iconUrl;
-    image.alt = "";
-    tag.appendChild(image);
-  } else if (icon) {
+  if (iconUrl || icon) {
     const badge = document.createElement("span");
     badge.className = "host-rule-tag-icon host-rule-tag-glyph";
     badge.style.color =
@@ -1646,7 +1640,7 @@ function createContainerReferenceTag({
         : color
           ? getColorCode(color)
           : "var(--muted)";
-    setIconGlyph(badge, icon);
+    setIconGlyph(badge, icon, iconUrl);
     tag.appendChild(badge);
   }
 
@@ -1852,12 +1846,26 @@ function formatChoiceLabel(value) {
     .join(" ");
 }
 
-function getIconSvgMarkup(icon) {
-  return ICON_SVG_BY_NAME[icon] || ICON_SVG_BY_NAME.circle;
-}
+function setIconGlyph(target, icon, iconUrl = "") {
+  const svgMarkup = ICON_SVG_BY_NAME[icon];
+  if (svgMarkup) {
+    setIcon(target, svgMarkup);
+    return;
+  }
 
-function setIconGlyph(target, icon) {
-  setIcon(target, getIconSvgMarkup(icon || "circle"));
+  const discoveredIconUrl =
+    iconUrl ||
+    state.iconChoices.find((choice) => choice.icon === icon)?.iconUrl ||
+    "";
+  if (discoveredIconUrl) {
+    const image = target.ownerDocument.createElement("img");
+    image.src = discoveredIconUrl;
+    image.alt = "";
+    target.replaceChildren(image);
+    return;
+  }
+
+  setIcon(target, ICON_SVG_BY_NAME.circle);
 }
 
 function isContainerAppearanceEditable(container) {
@@ -1962,7 +1970,7 @@ function createContainerIdentityPopover(
 
     const glyph = document.createElement("span");
     glyph.className = "container-identity-icon-glyph";
-    setIconGlyph(glyph, entry.icon);
+    setIconGlyph(glyph, entry.icon, entry.iconUrl);
 
     button.appendChild(glyph);
     button.onclick = () => {
@@ -4508,7 +4516,12 @@ function createContainerCard(
   }
 
   function updateIdentityPreview() {
-    setIconGlyph(identityToken, selectedIcon || slotEntry.icon || "default");
+    const icon = selectedIcon || slotEntry.icon || "default";
+    setIconGlyph(
+      identityToken,
+      icon,
+      icon === slotEntry.icon ? slotEntry.iconUrl : "",
+    );
     identityToken.style.color = isDefault
       ? "var(--accent-strong)"
       : getColorCode(selectedColor);
