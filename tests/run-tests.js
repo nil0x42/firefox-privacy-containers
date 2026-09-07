@@ -1756,6 +1756,59 @@ test("validates stored configuration before writing migrations", async () => {
   );
 });
 
+test("retries transient configuration initialization failures", async () => {
+  const storage = createLocalStorageMock();
+  const get = storage.get;
+  let reads = 0;
+  storage.get = async (keys) => {
+    reads += 1;
+    if (reads === 1) {
+      throw new Error("Temporary storage failure");
+    }
+    return get(keys);
+  };
+  const service = createConfigService({
+    Shared,
+    browser: { storage: { local: storage } },
+    writerId: "background",
+    async onChanged() {},
+  });
+
+  await assert.rejects(service.initialize(), /Temporary storage failure/);
+  const bundle = await service.initialize();
+
+  assert.strictEqual(reads, 2);
+  assert.strictEqual(bundle.meta.schemaVersion, Shared.CONFIG_SCHEMA_VERSION);
+});
+
+test("caches permanent configuration initialization failures", async () => {
+  const future = Shared.createConfigBundle(Shared.createDefaultConfig(), {});
+  future.meta.schemaVersion = Shared.CONFIG_SCHEMA_VERSION + 1;
+  const storage = createLocalStorageMock({ [Shared.CONFIG_KEY]: future });
+  const get = storage.get;
+  let reads = 0;
+  storage.get = async (keys) => {
+    reads += 1;
+    return get(keys);
+  };
+  const service = createConfigService({
+    Shared,
+    browser: { storage: { local: storage } },
+    writerId: "background",
+    async onChanged() {},
+  });
+
+  await assert.rejects(
+    service.initialize(),
+    (error) => error.code === "CONFIG_VERSION_UNSUPPORTED",
+  );
+  await assert.rejects(
+    service.initialize(),
+    (error) => error.code === "CONFIG_VERSION_UNSUPPORTED",
+  );
+  assert.strictEqual(reads, 1);
+});
+
 test("stores the active options tab independently from routing config", async () => {
   const storage = createLocalStorageMock({
     [Shared.CONFIG_KEY]: Shared.createConfigBundle(Shared.createDefaultConfig(), {
@@ -3643,6 +3696,31 @@ test("holds startup requests until the routing runtime is ready", async () => {
 
   try {
     ctx.background.bindBrowserEvents();
+    ctx.browserMock.storage.local.state[Shared.CONFIG_KEY] =
+      Shared.createConfigBundle({
+        proxies: [
+          {
+            id: "proxy-1",
+            type: "http",
+            host: "127.0.0.1",
+            port: 8080,
+          },
+        ],
+        containerSettings: {
+          "firefox-container-1": {
+            proxyId: "proxy-1",
+          },
+        },
+      });
+    const get = ctx.browserMock.storage.local.get;
+    let releaseStorage;
+    const storageReady = new Promise((resolve) => {
+      releaseStorage = resolve;
+    });
+    ctx.browserMock.storage.local.get = async function getWhenReady(keys) {
+      await storageReady;
+      return get.call(this, keys);
+    };
     const pendingResult = ctx.background.setProxy({
       url: "https://example.com/",
       method: "GET",
@@ -3656,23 +3734,7 @@ test("holds startup requests until the routing runtime is ready", async () => {
     await Promise.resolve();
     assert.strictEqual(settled, false);
 
-    ctx.background.setContainerCache([]);
-    ctx.background.state.config = Shared.normalizeConfig({
-      proxies: [
-        {
-          id: "proxy-1",
-          type: "http",
-          host: "127.0.0.1",
-          port: 8080,
-        },
-      ],
-      containerSettings: {
-        "firefox-container-1": {
-          proxyId: "proxy-1",
-        },
-      },
-    });
-    ctx.background.rebuildRuntime();
+    releaseStorage();
 
     const result = await pendingResult;
     assert.strictEqual(result[0].host, "127.0.0.1");
@@ -3725,6 +3787,36 @@ test("fails closed when routing initialization cannot complete", async () => {
   assert.strictEqual(result[0].host, "127.0.0.1");
   assert.strictEqual(result[0].port, 1);
   assert.strictEqual(result[1], null);
+});
+
+test("recovers routing after a transient initialization failure", async () => {
+  const ctx = loadBackgroundModule();
+  const get = ctx.browserMock.storage.local.get;
+  let reads = 0;
+  ctx.browserMock.storage.local.get = async function getWithFailure(keys) {
+    reads += 1;
+    if (reads === 1) {
+      throw new Error("Temporary storage failure");
+    }
+    return get.call(this, keys);
+  };
+  const request = {
+    url: "https://example.com/",
+    method: "GET",
+    cookieStoreId: "firefox-default",
+    requestId: "startup-retry",
+  };
+
+  try {
+    const firstProxyResult = await ctx.background.setProxy(request);
+    assert.strictEqual(firstProxyResult[0].host, "127.0.0.1");
+    assert.deepStrictEqual(await ctx.background.enforceHostRules(request), {});
+    assert.strictEqual(ctx.background.setProxy(request), null);
+    assert.strictEqual(ctx.background.state.routingReady, true);
+    assert.strictEqual(reads, 2);
+  } finally {
+    ctx.cleanup();
+  }
 });
 
 test("returns a terminal isolated proxy chain with minimal failure quarantine", () => {

@@ -36,32 +36,9 @@ export function createBackgroundApp(deps = {}) {
   const browserApi = deps.browser || globalThis.browser;
   const sharedApi = deps.Shared || Shared;
   const state = createBackgroundState(sharedApi);
-  let resolveRoutingReady;
-  let routingReadinessSettled = false;
-  const routingReadyPromise = new Promise((resolve) => {
-    resolveRoutingReady = resolve;
-  });
-
-  function settleRoutingReadiness(isReady) {
-    if (routingReadinessSettled) {
-      return;
-    }
-    routingReadinessSettled = true;
-    resolveRoutingReady(isReady);
-  }
 
   function markRoutingReady() {
-    if (state.routingReady) {
-      return;
-    }
     state.routingReady = true;
-    settleRoutingReadiness(true);
-  }
-
-  function markRoutingUnavailable() {
-    if (!state.routingReady) {
-      settleRoutingReadiness(false);
-    }
   }
 
   const tabIndex = createTabIndex({ Shared: sharedApi, state });
@@ -105,7 +82,8 @@ export function createBackgroundApp(deps = {}) {
     constants,
     requestContextCache,
     state,
-    waitForRoutingReady: () => routingReadyPromise,
+    waitForRoutingReady: () =>
+      lifecycle.initialize().then(() => state.routingReady),
   });
   const badges = createBadgeManager({
     Shared: sharedApi,
@@ -150,13 +128,8 @@ export function createBackgroundApp(deps = {}) {
     events.bindBrowserEvents();
   }
 
-  async function initialize() {
-    try {
-      await lifecycle.initialize();
-    } catch (error) {
-      markRoutingUnavailable();
-      throw error;
-    }
+  function initialize() {
+    return lifecycle.initialize();
   }
 
   return {

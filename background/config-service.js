@@ -11,7 +11,14 @@ export function createConfigService({ Shared, browser, writerId, onChanged }) {
     return result;
   }
 
-  async function initialize() {
+  function isPermanentInitializationError(error) {
+    return (
+      error?.code === "CONFIG_INVALID" ||
+      error?.code === "CONFIG_VERSION_UNSUPPORTED"
+    );
+  }
+
+  function initialize() {
     if (!initialization) {
       initialization = (async () => {
         const values = await browser.storage.local.get([
@@ -46,7 +53,12 @@ export function createConfigService({ Shared, browser, writerId, onChanged }) {
         }
         currentBundle = bundle;
         return bundle;
-      })();
+      })().catch((error) => {
+        if (!isPermanentInitializationError(error)) {
+          initialization = null;
+        }
+        throw error;
+      });
     }
     return initialization;
   }

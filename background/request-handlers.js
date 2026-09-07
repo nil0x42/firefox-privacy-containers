@@ -242,9 +242,17 @@ export function createRequestHandlers(deps) {
 
     function enforceHostRules(details) {
       if (!state.routingReady) {
-        return {
-          cancel: true,
-        };
+        try {
+          return Promise.resolve(waitForRoutingReady()).then(
+            (isReady) =>
+              isReady && state.routingReady
+                ? enforceHostRules(details)
+                : { cancel: true },
+            () => ({ cancel: true }),
+          );
+        } catch (_) {
+          return { cancel: true };
+        }
       }
 
       const runtime = state.runtime;

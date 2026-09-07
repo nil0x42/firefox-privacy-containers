@@ -227,7 +227,10 @@ export function createLifecycleController(deps) {
 
     function initialize() {
       if (!initializationPromise) {
-        initializationPromise = initializeOnce();
+        initializationPromise = initializeOnce().catch((error) => {
+          initializationPromise = null;
+          throw error;
+        });
       }
       return initializationPromise;
     }
