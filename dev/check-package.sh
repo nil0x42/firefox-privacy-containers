@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-root_dir=$(git -C "$script_dir" rev-parse --show-toplevel)
+root_dir=$(cd -- "$script_dir/.." && pwd)
 cd "$root_dir"
 
 version=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' manifest.json | head -n 1)
