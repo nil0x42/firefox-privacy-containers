@@ -33,12 +33,23 @@ cp res/* "$stage_dir/res/"
 cp ui/*.js "$stage_dir/ui/"
 cp utils/*.js "$stage_dir/utils/"
 
+archive_epoch=${SOURCE_DATE_EPOCH:-946684800}
+if [[ ! "$archive_epoch" =~ ^[0-9]+$ ]]; then
+  printf 'SOURCE_DATE_EPOCH must be a non-negative integer.\n' >&2
+  exit 1
+fi
+find "$stage_dir" -exec touch -d "@$archive_epoch" -- {} +
+
 mkdir -p dist
 archive="privacy-containers-${current_version}.xpi"
-web-ext build \
-  --source-dir "$stage_dir" \
-  --artifacts-dir dist \
-  --filename "$archive" \
-  --overwrite-dest
+archive_path="$root_dir/dist/$archive"
+web-ext lint --source-dir "$stage_dir"
+rm -f -- "$archive_path"
+(
+  cd "$stage_dir"
+  LC_ALL=C find . -type f -printf '%P\n' |
+    LC_ALL=C sort |
+    zip -X -q "$archive_path" -@
+)
 
 printf 'Created archive: dist/%s\n' "$archive"

@@ -9,6 +9,14 @@ version=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/
 archive="dist/privacy-containers-${version}.xpi"
 
 bash dev/package-addon.sh
+first_hash=$(sha256sum "$archive" | cut -d ' ' -f 1)
+bash dev/package-addon.sh
+second_hash=$(sha256sum "$archive" | cut -d ' ' -f 1)
+
+if [[ "$first_hash" != "$second_hash" ]]; then
+  printf 'Package is not reproducible: %s != %s\n' "$first_hash" "$second_hash" >&2
+  exit 1
+fi
 
 contents=$(unzip -Z1 "$archive")
 for required_path in manifest.json background/app.js domain/ui-state.js ui/icons.js options/app.html popup/popup.html blocked/blocked.html; do
