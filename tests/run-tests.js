@@ -1571,6 +1571,21 @@ test("refuses future and malformed stored configuration schemas", () => {
     () => Shared.normalizeConfigBundle("invalid"),
     (error) => error.code === "CONFIG_INVALID",
   );
+
+  const malformedEnvelopes = [
+    { meta: { schemaVersion: Shared.CONFIG_SCHEMA_VERSION + 1 } },
+    { config: Shared.createDefaultConfig() },
+    { meta: null, config: Shared.createDefaultConfig() },
+    { meta: [], config: Shared.createDefaultConfig() },
+    { meta: {}, config: null },
+    { meta: {}, config: [] },
+  ];
+  malformedEnvelopes.forEach((value) => {
+    assert.throws(
+      () => Shared.normalizeConfigBundle(value),
+      (error) => error.code === "CONFIG_INVALID",
+    );
+  });
 });
 
 test("loads defaults and migrations without writing during reads", async () => {

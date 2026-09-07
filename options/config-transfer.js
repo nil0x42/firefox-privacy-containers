@@ -1,5 +1,6 @@
 import Shared from "../utils/shared.js";
 import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
+import { isRecord } from "../domain/values.js";
   const FORMAT_KIND = "firefox-privacy-containers-config";
   const FORMAT_VERSION = 2;
   const INSTANCE_KEY = "privacyContainersTransferInstanceId";
@@ -8,10 +9,6 @@ import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
 
   function text(value) {
     return typeof value === "string" ? value.trim() : "";
-  }
-
-  function record(value) {
-    return Boolean(value && typeof value === "object" && !Array.isArray(value));
   }
 
   function containerDescriptor(container, sourceIdKey = "sourceCookieStoreId") {
@@ -27,13 +24,13 @@ import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
 
   function validateConfigShape(config) {
     for (const key of ["proxies", "hostRules", "globalHeaders"]) {
-      if (!Array.isArray(config[key]) || config[key].some((item) => !record(item))) {
+      if (!Array.isArray(config[key]) || config[key].some((item) => !isRecord(item))) {
         throw new Error(`The imported ${key} list is invalid.`);
       }
     }
     if (
-      !record(config.containerSettings) ||
-      Object.values(config.containerSettings).some((setting) => !record(setting))
+      !isRecord(config.containerSettings) ||
+      Object.values(config.containerSettings).some((setting) => !isRecord(setting))
     ) {
       throw new Error("The imported configuration structure is invalid.");
     }
@@ -80,7 +77,7 @@ import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
   }
 
   function parseImportDocument(value, options = {}) {
-    if (!record(value)) {
+    if (!isRecord(value)) {
       throw new Error("The selected file does not contain a JSON object.");
     }
     if (value.kind !== FORMAT_KIND) {
@@ -96,7 +93,7 @@ import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
     if (!Array.isArray(value.containers)) {
       throw new Error("The imported container list is invalid.");
     }
-    if (!record(value.config)) {
+    if (!isRecord(value.config)) {
       throw new Error("The imported configuration is invalid.");
     }
     validateConfigShape(value.config);
@@ -140,7 +137,7 @@ import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
       throw new Error(`Imported configuration references an unknown container: ${missingReference}`);
     }
 
-    if (!record(value.shortcuts)) {
+    if (!isRecord(value.shortcuts)) {
       throw new Error("The imported shortcut snapshot is invalid.");
     }
     const knownCommands = new Set(options.commandNames || []);

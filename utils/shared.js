@@ -34,7 +34,12 @@ import {
   isReopenContainerSlotCommand,
   normalizeShortcutKey,
 } from "../domain/shortcuts.js";
-import { clone, normalizeBoolean, normalizeText } from "../domain/values.js";
+import {
+  clone,
+  isRecord,
+  normalizeBoolean,
+  normalizeText,
+} from "../domain/values.js";
 import {
   BLOCKED_REOPEN_PREFIXES,
   canReopenTabUrl,
@@ -2166,7 +2171,7 @@ import {
 
   function createConfigBundle(config, meta) {
     const normalizedConfig = normalizeConfig(config);
-    const sourceMeta = meta && typeof meta === "object" ? meta : {};
+    const sourceMeta = isRecord(meta) ? meta : {};
 
     return {
       meta: {
@@ -2183,12 +2188,7 @@ import {
 
   function isConfigBundle(value) {
     return Boolean(
-      value &&
-        typeof value === "object" &&
-        value.meta &&
-        typeof value.meta === "object" &&
-        value.config &&
-        typeof value.config === "object",
+      isRecord(value) && isRecord(value.meta) && isRecord(value.config),
     );
   }
 
@@ -2199,14 +2199,23 @@ import {
   }
 
   function normalizeConfigBundle(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
+    if (!isRecord(value)) {
       throw createConfigError(
         "CONFIG_INVALID",
         "The stored configuration is not a valid object.",
       );
     }
 
-    if (isConfigBundle(value)) {
+    const hasEnvelopeFields =
+      Object.hasOwn(value, "meta") || Object.hasOwn(value, "config");
+    if (hasEnvelopeFields && !isConfigBundle(value)) {
+      throw createConfigError(
+        "CONFIG_INVALID",
+        "The stored configuration envelope is incomplete or invalid.",
+      );
+    }
+
+    if (hasEnvelopeFields) {
       const schemaVersion = value.meta.schemaVersion;
       if (
         schemaVersion !== undefined &&
@@ -2337,6 +2346,7 @@ import {
     isExtensionTabUrl,
     isLoopbackHost,
     isLoopbackNormalizedHost,
+    isRecord,
     isOpenContainerSlotCommand,
     isReopenContainerSlotCommand,
     isSocksProxyType,

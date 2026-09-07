@@ -2,6 +2,10 @@ export function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+export function isRecord(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 export function normalizeBoolean(value, fallback) {
   if (typeof value === "boolean") {
     return value;
