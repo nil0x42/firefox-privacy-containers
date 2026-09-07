@@ -1689,6 +1689,12 @@ test("migrates the legacy active options tab before storing schema 4", async () 
     },
   };
   const storage = createLocalStorageMock({ [Shared.CONFIG_KEY]: legacy });
+  const writes = [];
+  const set = storage.set;
+  storage.set = async (entries) => {
+    writes.push(entries);
+    await set(entries);
+  };
   const service = createConfigService({
     Shared,
     browser: { storage: { local: storage } },
@@ -1704,6 +1710,50 @@ test("migrates the legacy active options tab before storing schema 4", async () 
     activeTab: "host-rules",
   });
   assert.strictEqual(storage.values[Shared.CONFIG_KEY].meta.schemaVersion, 4);
+  assert.strictEqual(writes.length, 1);
+  assert.deepStrictEqual(Object.keys(writes[0]).sort(), [
+    OPTIONS_UI_KEY,
+    Shared.CONFIG_KEY,
+  ].sort());
+});
+
+test("validates stored configuration before writing migrations", async () => {
+  const future = {
+    meta: { schemaVersion: Shared.CONFIG_SCHEMA_VERSION + 1, revision: 9 },
+    config: {
+      ...Shared.createDefaultConfig(),
+      ui: { activeTab: "host-rules" },
+    },
+  };
+  const storage = createLocalStorageMock({ [Shared.CONFIG_KEY]: future });
+  const writes = [];
+  storage.set = async (entries) => {
+    writes.push(entries);
+  };
+  const service = createConfigService({
+    Shared,
+    browser: { storage: { local: storage } },
+    writerId: "background",
+    async onChanged() {},
+  });
+
+  await assert.rejects(
+    service.initialize(),
+    (error) => error.code === "CONFIG_VERSION_UNSUPPORTED",
+  );
+  assert.deepStrictEqual(writes, []);
+
+  const nullStorage = createLocalStorageMock({ [Shared.CONFIG_KEY]: null });
+  const nullService = createConfigService({
+    Shared,
+    browser: { storage: { local: nullStorage } },
+    writerId: "background",
+    async onChanged() {},
+  });
+  await assert.rejects(
+    nullService.initialize(),
+    (error) => error.code === "CONFIG_INVALID",
+  );
 });
 
 test("stores the active options tab independently from routing config", async () => {

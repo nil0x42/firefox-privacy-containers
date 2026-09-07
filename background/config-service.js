@@ -18,25 +18,31 @@ export function createConfigService({ Shared, browser, writerId, onChanged }) {
           Shared.CONFIG_KEY,
           OPTIONS_UI_KEY,
         ]);
+        const hasStoredConfig = Object.hasOwn(values, Shared.CONFIG_KEY);
+        const hasStoredUi = Object.hasOwn(values, OPTIONS_UI_KEY);
         const stored = values[Shared.CONFIG_KEY];
-        if (!values[OPTIONS_UI_KEY]) {
-          const legacyUi = stored?.config?.ui || stored?.ui;
-          if (legacyUi?.activeTab) {
-            await browser.storage.local.set({
-              [OPTIONS_UI_KEY]: {
-                activeTab: normalizeActiveTab(legacyUi.activeTab),
-              },
-            });
-          }
-        }
-        const bundle = stored
+        const bundle = hasStoredConfig
           ? Shared.normalizeConfigBundle(stored)
           : Shared.createConfigBundle(Shared.createDefaultConfig(), {
               revision: 0,
               writer: writerId,
             });
-        if (!stored || JSON.stringify(stored) !== JSON.stringify(bundle)) {
-          await browser.storage.local.set({ [Shared.CONFIG_KEY]: bundle });
+        const updates = {};
+
+        if (!hasStoredUi) {
+          const legacyUi = stored?.config?.ui || stored?.ui;
+          if (legacyUi?.activeTab) {
+            updates[OPTIONS_UI_KEY] = {
+              activeTab: normalizeActiveTab(legacyUi.activeTab),
+            };
+          }
+        }
+
+        if (!hasStoredConfig || JSON.stringify(stored) !== JSON.stringify(bundle)) {
+          updates[Shared.CONFIG_KEY] = bundle;
+        }
+        if (Object.keys(updates).length) {
+          await browser.storage.local.set(updates);
         }
         currentBundle = bundle;
         return bundle;
