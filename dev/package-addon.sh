@@ -39,6 +39,7 @@ if [[ ! "$archive_epoch" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 find "$stage_dir" -exec touch -d "@$archive_epoch" -- {} +
+find "$stage_dir" -type f -exec chmod 0644 -- {} +
 
 mkdir -p dist
 archive="privacy-containers-${current_version}.xpi"
@@ -49,7 +50,7 @@ rm -f -- "$archive_path"
   cd "$stage_dir"
   LC_ALL=C find . -type f -printf '%P\n' |
     LC_ALL=C sort |
-    zip -X -q "$archive_path" -@
+    TZ=UTC zip -X -q "$archive_path" -@
 )
 
 printf 'Created archive: dist/%s\n' "$archive"

@@ -8,9 +8,12 @@ cd "$root_dir"
 version=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' manifest.json | head -n 1)
 archive="dist/privacy-containers-${version}.xpi"
 
-bash dev/package-addon.sh
+TZ=UTC bash dev/package-addon.sh
 first_hash=$(sha256sum "$archive" | cut -d ' ' -f 1)
-bash dev/package-addon.sh
+(
+  umask 077
+  TZ=GMT+8 bash dev/package-addon.sh
+)
 second_hash=$(sha256sum "$archive" | cut -d ' ' -f 1)
 
 if [[ "$first_hash" != "$second_hash" ]]; then
