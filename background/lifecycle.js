@@ -3,7 +3,6 @@ export function createLifecycleController(deps) {
       state,
       browser,
       Shared,
-      constants,
       runtimeManager,
       containerCache,
       tabIndex,

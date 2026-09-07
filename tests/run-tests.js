@@ -5291,7 +5291,6 @@ test("suppresses repeated auto-reopen attempts for the same target and url", asy
     },
   };
   const blockedPageStore = createBlockedPageStore({
-    Shared,
     browser,
     constants: {
       BLOCKED_PAGE_ENTRY_TTL_MS: 5 * 60 * 1000,

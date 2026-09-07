@@ -7,7 +7,6 @@ export function createBlockedPageStore(deps) {
     const {
       state,
       browser,
-      Shared,
       constants,
       containerCache,
       requestContextCache,

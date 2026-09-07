@@ -11,6 +11,16 @@ export const OPEN_CONTAINER_SLOT_COMMAND_PREFIX = "open-container-slot-";
 export const REOPEN_CONTAINER_SLOT_COMMAND_PREFIX =
   "reopen-current-tab-in-container-slot-";
 
+const FIXED_COMMAND_DESCRIPTIONS = Object.freeze({
+  [OPEN_CURRENT_CONTAINER_TAB_COMMAND]:
+    "Open a new tab in the current container",
+  [GO_ONE_TAB_LEFT_COMMAND]: "Go one tab to the left",
+  [GO_ONE_TAB_RIGHT_COMMAND]: "Go one tab to the right",
+  [MOVE_TAB_LEFT_COMMAND]: "Move tab left",
+  [MOVE_TAB_RIGHT_COMMAND]: "Move tab right",
+  [TOGGLE_TAB_PINNED_COMMAND]: "Pin/Unpin tab",
+});
+
 export function getOpenContainerSlotCommandName(slot) {
   return `${OPEN_CONTAINER_SLOT_COMMAND_PREFIX}${slot}`;
 }
@@ -20,17 +30,7 @@ export function getReopenContainerSlotCommandName(slot) {
 }
 
 export function getFixedShortcutCommandDescription(commandName) {
-  return (
-    {
-      [OPEN_CURRENT_CONTAINER_TAB_COMMAND]:
-        "Open a new tab in the current container",
-      [GO_ONE_TAB_LEFT_COMMAND]: "Go one tab to the left",
-      [GO_ONE_TAB_RIGHT_COMMAND]: "Go one tab to the right",
-      [MOVE_TAB_LEFT_COMMAND]: "Move tab left",
-      [MOVE_TAB_RIGHT_COMMAND]: "Move tab right",
-      [TOGGLE_TAB_PINNED_COMMAND]: "Pin/Unpin tab",
-    }[commandName] || ""
-  );
+  return FIXED_COMMAND_DESCRIPTIONS[commandName] || "";
 }
 
 export function getSlotNumberFromCommandName(commandName) {

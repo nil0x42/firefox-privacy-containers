@@ -68,7 +68,6 @@ export function createBackgroundApp(deps = {}) {
     onChanged: (bundle) => lifecycle.handleConfigChanged(bundle),
   });
   const blockedPageStore = createBlockedPageStore({
-    Shared: sharedApi,
     browser: browserApi,
     constants,
     containerCache,
@@ -101,7 +100,6 @@ export function createBackgroundApp(deps = {}) {
     Shared: sharedApi,
     badges,
     browser: browserApi,
-    constants,
     containerCache,
     configService,
     runtimeManager,
@@ -114,7 +112,6 @@ export function createBackgroundApp(deps = {}) {
     badges,
     blockedPageStore,
     browser: browserApi,
-    constants,
     configService,
     lifecycle,
     requestHandlers,
