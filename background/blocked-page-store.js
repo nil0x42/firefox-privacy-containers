@@ -482,17 +482,26 @@ export function createBlockedPageStore(deps) {
           cookieStoreId,
         ),
       );
-      state.blockedPageEntries.delete(entryId);
-      await removePersistedBlockedPageEntry(entryId);
-
-      if (
+      const shouldReplaceBlockedTab =
         typeof referenceTab.url === "string" &&
         referenceTab.url.startsWith(
           browser.runtime.getURL(constants.BLOCKED_PAGE_PATH),
-        )
-      ) {
-        await browser.tabs.remove(referenceTab.id);
+        );
+      if (shouldReplaceBlockedTab) {
+        try {
+          await browser.tabs.remove(referenceTab.id);
+        } catch (error) {
+          if (typeof createdTab?.id === "number") {
+            await browser.tabs.remove(createdTab.id).catch(() => undefined);
+          }
+          throw error;
+        }
       }
+
+      state.blockedPageEntries.delete(entryId);
+      await removePersistedBlockedPageEntry(entryId).catch((error) => {
+        console.error("Failed to remove consumed blocked navigation context", error);
+      });
 
       return {
         ok: true,

@@ -3458,6 +3458,43 @@ function getBlockedEntryId(redirectUrl) {
   return new URL(redirectUrl).searchParams.get("entry");
 }
 
+async function createBlockedReopenEntry(ctx) {
+  ctx.background.setContainerCache([
+    {
+      cookieStoreId: "firefox-container-1",
+      name: "Work",
+      color: "blue",
+      iconUrl: "work.svg",
+    },
+  ]);
+  return ctx.background.createBlockedPageEntry(
+    {
+      ruleId: "rule-1",
+      ruleName: "Work only",
+      mode: "blacklist",
+      host: "example.com",
+      cookieStoreId: "firefox-container-9",
+      allowedContainerIdsForBlockedPage: ["firefox-container-1"],
+    },
+    {
+      url: "https://example.com/dashboard",
+      tabId: 7,
+    },
+  );
+}
+
+function createBlockedReopenSender() {
+  return {
+    tab: {
+      id: 7,
+      url: "moz-extension://test/blocked/blocked.html?entry=test",
+      windowId: 4,
+      index: 2,
+      pinned: true,
+    },
+  };
+}
+
 function loadBackgroundModule() {
   const storageLocalState = {};
   const storageSessionState = {};
@@ -4980,6 +5017,86 @@ test("reopens blocked urls in the requested container by replacing the blocked t
       cookieStoreId: "firefox-container-1",
     });
     assert.deepStrictEqual(ctx.browserMock.tabs.removed, [7]);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("keeps a blocked context when replacement cannot be completed", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    const entryId = await createBlockedReopenEntry(ctx);
+    const storageKey = `blockedContext:${entryId}`;
+    ctx.browserMock.tabs.remove = async function removeWithFailure(tabId) {
+      this.removed.push(tabId);
+      if (tabId === 7) {
+        throw new Error("Failed to close blocked tab");
+      }
+    };
+
+    await assert.rejects(
+      ctx.background.openBlockedUrlInContainer(
+        { entry: entryId, cookieStoreId: "firefox-container-1" },
+        createBlockedReopenSender(),
+      ),
+      /Failed to close blocked tab/,
+    );
+
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, [7, 99]);
+    assert.strictEqual(ctx.background.state.blockedPageEntries.has(entryId), true);
+    assert.ok(ctx.browserMock.storage.session.state[storageKey]);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("completes tab replacement when consumed context cleanup fails", async () => {
+  const ctx = loadBackgroundModule();
+  const originalConsoleError = console.error;
+
+  try {
+    const entryId = await createBlockedReopenEntry(ctx);
+    const storageKey = `blockedContext:${entryId}`;
+    ctx.browserMock.storage.session.remove = async () => {
+      throw new Error("Temporary storage failure");
+    };
+    console.error = () => undefined;
+
+    const result = await ctx.background.openBlockedUrlInContainer(
+      { entry: entryId, cookieStoreId: "firefox-container-1" },
+      createBlockedReopenSender(),
+    );
+
+    assert.strictEqual(result.ok, true);
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, [7]);
+    assert.strictEqual(ctx.background.state.blockedPageEntries.has(entryId), false);
+    assert.ok(ctx.browserMock.storage.session.state[storageKey]);
+  } finally {
+    console.error = originalConsoleError;
+    ctx.cleanup();
+  }
+});
+
+test("keeps a blocked context when replacement tab creation fails", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    const entryId = await createBlockedReopenEntry(ctx);
+    ctx.browserMock.tabs.create = async () => {
+      throw new Error("Failed to create replacement tab");
+    };
+
+    await assert.rejects(
+      ctx.background.openBlockedUrlInContainer(
+        { entry: entryId, cookieStoreId: "firefox-container-1" },
+        createBlockedReopenSender(),
+      ),
+      /Failed to create replacement tab/,
+    );
+
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, []);
+    assert.strictEqual(ctx.background.state.blockedPageEntries.has(entryId), true);
   } finally {
     ctx.cleanup();
   }
