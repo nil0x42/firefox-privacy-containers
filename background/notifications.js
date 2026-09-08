@@ -1,11 +1,4 @@
 export async function showNotification(browser, options) {
-  if (
-    !browser.notifications ||
-    typeof browser.notifications.create !== "function"
-  ) {
-    return false;
-  }
-
   await browser.notifications.create(options.id, {
     type: "basic",
     iconUrl: browser.runtime.getURL("res/icon.png"),
@@ -13,7 +6,6 @@ export async function showNotification(browser, options) {
     message: options.message,
   });
 
-  return true;
 }
 
 export function showCommandFailureNotification(browser, error) {

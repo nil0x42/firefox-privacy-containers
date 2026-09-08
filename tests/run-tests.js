@@ -188,7 +188,6 @@ test("replaces notifications by purpose", async () => {
     "shortcut-failure",
     "shortcut-failure",
   ]);
-  assert.strictEqual(await showNotification({}, options), false);
 });
 
 function createTransferFixture() {

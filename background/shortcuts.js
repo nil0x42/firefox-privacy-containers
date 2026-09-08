@@ -20,10 +20,6 @@ export function createShortcutManager(deps) {
     }
 
     async function refreshCommandDescriptions() {
-      if (!browser.commands?.getAll || !browser.commands.update) {
-        return;
-      }
-
       const desiredDescriptions = new Map();
       [
         Shortcut.OPEN_CURRENT_CONTAINER_TAB_COMMAND,

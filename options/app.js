@@ -2548,7 +2548,7 @@ async function refreshState(options) {
     await Promise.all([
       getConfigBundle(),
       browser.contextualIdentities.query({}),
-      browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
+      browser.commands.getAll(),
       IdentityChoices.getSupportedIdentityChoices(browser),
       OptionsUi.loadOptionsUi(browser),
     ]);
@@ -2566,16 +2566,10 @@ async function refreshState(options) {
 }
 
 async function refreshCommands() {
-  state.commands = browser.commands.getAll
-    ? await browser.commands.getAll()
-    : [];
+  state.commands = await browser.commands.getAll();
 }
 
 async function notifyBackgroundContainersChanged() {
-  if (!browser.runtime || !browser.runtime.sendMessage) {
-    return;
-  }
-
   const response = await browser.runtime.sendMessage({
     type: "containers-changed",
   });
@@ -2708,9 +2702,7 @@ function getShortcutStateFingerprint(commands) {
 }
 
 function createTransferId(prefix) {
-  const suffix = globalThis.crypto?.randomUUID?.() ||
-    `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  return `${prefix}-${suffix}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 async function initializeTransferMetadata() {
@@ -2722,15 +2714,11 @@ async function initializeTransferMetadata() {
       [ConfigTransfer.INSTANCE_KEY]: state.transferInstanceId,
     });
   }
-  state.transferPlatform = browser.runtime.getPlatformInfo
-    ? (await browser.runtime.getPlatformInfo()).os
-    : "";
+  state.transferPlatform = (await browser.runtime.getPlatformInfo()).os;
 }
 
 function withTransferLock(task) {
-  return globalThis.navigator?.locks?.request
-    ? navigator.locks.request("privacy-containers-config-transfer", task)
-    : task();
+  return navigator.locks.request("privacy-containers-config-transfer", task);
 }
 
 function syncTransferActionState() {
@@ -5971,19 +5959,17 @@ function bindEvents() {
     receiveRemoteBundle(nextBundle);
   });
 
-  if (browser.commands && browser.commands.onChanged) {
-    browser.commands.onChanged.addListener(() => {
-      if (state.suppressCommandChangeEvents > 0) {
-        return;
-      }
+  browser.commands.onChanged.addListener(() => {
+    if (state.suppressCommandChangeEvents > 0) {
+      return;
+    }
 
-      refreshCommands()
-        .then(() => {
-          syncVisibleShortcutFields();
-        })
-        .catch((error) => setStatus(error.message, true));
-    });
-  }
+    refreshCommands()
+      .then(() => {
+        syncVisibleShortcutFields();
+      })
+      .catch((error) => setStatus(error.message, true));
+  });
 
   window.addEventListener("pagehide", () => {
     closeContainerIdentityPopover();

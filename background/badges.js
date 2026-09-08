@@ -5,7 +5,7 @@ export function createBadgeManager(deps) {
       Shared,
       tabIndex,
     } = deps;
-    const action = browser.action || browser.browserAction;
+    const action = browser.action;
 
     function getBadgeTextForCookieStoreId(cookieStoreId) {
       const effectiveCookieStoreId = Shared.getEffectiveCookieStoreId(cookieStoreId);

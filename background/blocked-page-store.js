@@ -344,8 +344,6 @@ export function createBlockedPageStore(deps) {
 
     async function navigateTabToBlockedPage(decision, details) {
       if (
-        !browser.tabs ||
-        typeof browser.tabs.update !== "function" ||
         typeof details.tabId !== "number"
       ) {
         return false;
@@ -360,10 +358,6 @@ export function createBlockedPageStore(deps) {
 
     async function reopenBlockedMainFrameInContainer(details, cookieStoreId) {
       if (
-        !browser.tabs ||
-        typeof browser.tabs.get !== "function" ||
-        typeof browser.tabs.create !== "function" ||
-        typeof browser.tabs.remove !== "function" ||
         typeof details.tabId !== "number"
       ) {
         throw new Error("The blocked tab could not be reopened automatically.");
