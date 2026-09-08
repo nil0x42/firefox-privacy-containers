@@ -140,8 +140,6 @@ export function createLifecycleController(deps) {
     }
 
     async function cleanupRemovedContainer(cookieStoreId) {
-      const previousConfig = state.config;
-      const previousProxyRuntime = state.runtime.proxyRuntime;
       const previousSlotIds =
         state.runtime.shortcutRuntime.containerIdBySlot.slice();
       const hadSetting = Boolean(state.config.containerSettings[cookieStoreId]);
@@ -153,30 +151,7 @@ export function createLifecycleController(deps) {
         );
       }
 
-      const parts = new Set(["headers", "shortcuts"]);
-      runtimeManager
-        .getConfigRuntimePartsToRefresh(previousConfig, state.config)
-        .forEach((part) => {
-          parts.add(part);
-        });
-      runtimeManager.refreshRuntimeParts(Array.from(parts));
-
-      if (
-        parts.has("proxy") &&
-        haveBadgeAssignmentsChanged(
-          previousProxyRuntime,
-          state.runtime.proxyRuntime,
-        )
-      ) {
-        await badges.updateBadgesForContainers(
-          new Set([
-            ...(previousProxyRuntime.proxiedContainerIds || []),
-            ...(previousProxyRuntime.blockedContainerIds || []),
-            ...(state.runtime.proxyRuntime.proxiedContainerIds || []),
-            ...(state.runtime.proxyRuntime.blockedContainerIds || []),
-          ]),
-        );
-      }
+      runtimeManager.refreshRuntimeParts(["shortcuts"]);
 
       if (
         haveContainerSlotsChanged(
