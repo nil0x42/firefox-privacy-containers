@@ -5937,6 +5937,7 @@ export {
   getHeaderPrimaryActionDescriptor,
   getInternalShortcutConflictIssue,
   importShortcutSnapshot,
+  main,
   recoverImportTransaction,
   rollbackImportTransaction,
   shouldShowExternalContainerGuessWarning,
