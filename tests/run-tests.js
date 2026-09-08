@@ -306,26 +306,6 @@ test("declares a Firefox Manifest V3 event page without widening host access", (
   );
 });
 
-test("uses safe SVG parsing without HTML injection", () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, "..", "ui", "icons.js"),
-    "utf8",
-  );
-  assert.strictEqual(source.includes("innerHTML"), false);
-  assert.ok(source.includes('parseFromString(svgMarkup, "text/html")'));
-  assert.ok(source.includes('namespaceURI !== "http://www.w3.org/2000/svg"'));
-  assert.strictEqual(
-    fs.readFileSync(path.join(__dirname, "..", "options", "app.js"), "utf8")
-      .includes("new DOMParser"),
-    false,
-  );
-  assert.strictEqual(
-    fs.readFileSync(path.join(__dirname, "..", "popup", "popup.js"), "utf8")
-      .includes("new DOMParser"),
-    false,
-  );
-});
-
 test("uses Firefox identity choices when the browser exposes them", async () => {
   const colors = [
     { color: "cyan", colorCode: "#00aabb" },

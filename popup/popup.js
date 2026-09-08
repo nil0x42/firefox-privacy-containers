@@ -318,6 +318,10 @@ async function main() {
   renderActions();
 }
 
-main().catch((error) => {
-  showStatus(error.message || "Failed to initialize popup.", true);
-});
+if (typeof document !== "undefined") {
+  main().catch((error) => {
+    showStatus(error.message || "Failed to initialize popup.", true);
+  });
+}
+
+export { main };
