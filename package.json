@@ -17,6 +17,7 @@
     "lint:js": "eslint .",
     "package": "bash dev/package-addon.sh",
     "package:check": "bash dev/check-package.sh",
+    "smoke:firefox": "bash dev/smoke-firefox.sh",
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
