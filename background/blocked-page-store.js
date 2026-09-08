@@ -12,20 +12,15 @@ export function createBlockedPageStore(deps) {
       requestContextCache,
       tabActions,
     } = deps;
-    const autoReopenAttemptsByKey = new Map();
-    const AUTO_REOPEN_GUARD_TTL_MS = 10000;
+    const pendingAutoReopenAttempts = new Set();
 
-    function cleanupAutoReopenAttempts(now) {
-      const effectiveNow = Number.isFinite(now) ? now : Date.now();
-      autoReopenAttemptsByKey.forEach((createdAt, key) => {
-        if (createdAt + AUTO_REOPEN_GUARD_TTL_MS <= effectiveNow) {
-          autoReopenAttemptsByKey.delete(key);
-        }
-      });
-    }
-
-    function buildAutoReopenAttemptKey(url, cookieStoreId) {
-      return `${cookieStoreId}\u0001${url}`;
+    function buildAutoReopenAttemptKey(details, cookieStoreId) {
+      return [
+        details.tabId,
+        details.requestId || "",
+        cookieStoreId,
+        details.url,
+      ].join("\u0001");
     }
 
     async function showAutoReopenNotification(decision, cookieStoreId) {
@@ -397,8 +392,6 @@ export function createBlockedPageStore(deps) {
     }
 
     function scheduleAutoReopenBlockedMainFrame(decision, details) {
-      cleanupAutoReopenAttempts();
-
       const targetCookieStoreId = getUniqueAvailableAllowedContainerId(
         decision,
         details,
@@ -407,15 +400,12 @@ export function createBlockedPageStore(deps) {
         return false;
       }
 
-      const attemptKey = buildAutoReopenAttemptKey(
-        details.url,
-        targetCookieStoreId,
-      );
-      if (autoReopenAttemptsByKey.has(attemptKey)) {
+      const attemptKey = buildAutoReopenAttemptKey(details, targetCookieStoreId);
+      if (pendingAutoReopenAttempts.has(attemptKey)) {
         return false;
       }
 
-      autoReopenAttemptsByKey.set(attemptKey, Date.now());
+      pendingAutoReopenAttempts.add(attemptKey);
 
       return Promise.resolve()
         .then(async () => {
@@ -438,6 +428,9 @@ export function createBlockedPageStore(deps) {
               console.error("Failed to show auto-reopen notification", error);
             },
           );
+        })
+        .finally(() => {
+          pendingAutoReopenAttempts.delete(attemptKey);
         });
     }
 

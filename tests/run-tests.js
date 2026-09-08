@@ -5304,7 +5304,7 @@ test("rejects reopening blocked urls in unauthorized containers", async () => {
   }
 });
 
-test("suppresses repeated auto-reopen attempts for the same target and url", async () => {
+test("deduplicates only the same pending auto-reopen navigation", async () => {
   const state = {
     blockedPageEntries: new Map(),
   };
@@ -5322,6 +5322,15 @@ test("suppresses repeated auto-reopen attempts for the same target and url", asy
             id: 7,
             windowId: 4,
             index: 2,
+            pinned: false,
+          },
+        ],
+        [
+          8,
+          {
+            id: 8,
+            windowId: 4,
+            index: 3,
             pinned: false,
           },
         ],
@@ -5399,7 +5408,22 @@ test("suppresses repeated auto-reopen attempts for the same target and url", asy
     blockedPageStore.scheduleAutoReopenBlockedMainFrame(decision, details),
     false,
   );
-  await firstAttempt;
+  const independentAttempt =
+    blockedPageStore.scheduleAutoReopenBlockedMainFrame(decision, {
+      ...details,
+      requestId: "independent-request",
+      tabId: 8,
+    });
+  assert.ok(independentAttempt);
+
+  await Promise.all([firstAttempt, independentAttempt]);
+
+  const laterAttempt = blockedPageStore.scheduleAutoReopenBlockedMainFrame(
+    decision,
+    details,
+  );
+  assert.ok(laterAttempt);
+  await laterAttempt;
 });
 
 test("validates tab placement separately from web page actions", () => {
