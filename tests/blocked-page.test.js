@@ -29,7 +29,7 @@ test("keeps the blocked URL visible without allowing direct navigation", async (
       "blocked-1",
       blockedUrl,
     );
-    document.body.appendChild(link);
+    globalThis.document.body.appendChild(link);
 
     assert.strictEqual(link.href, blockedUrl);
     assert.strictEqual(link.draggable, false);

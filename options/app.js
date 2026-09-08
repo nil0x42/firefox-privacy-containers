@@ -12,10 +12,7 @@ import {
   createConfigDraftController,
   createOptionsState,
 } from "./state.js";
-import {
-  createSvgIcon as createIcon,
-  setSvgIcon as setIcon,
-} from "../ui/icons.js";
+import { setSvgIcon as setIcon } from "../ui/icons.js";
 
 const ICON_SVG_BY_NAME = {
   fingerprint:
@@ -312,6 +309,12 @@ function scheduleStickyHeaderMetrics() {
 
   stickyHeaderMeasureFrame = window.requestAnimationFrame(() => {
     syncStickyHeaderMetrics();
+  });
+}
+
+function nextAnimationFrame() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(resolve);
   });
 }
 
@@ -3595,7 +3598,7 @@ async function renderActiveTabContentPreservingScrollPosition() {
   const scrollY = window.scrollY;
 
   await renderActiveTabContent();
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  await nextAnimationFrame();
   window.scrollTo(scrollX, scrollY);
   scheduleContainerIdentityPopoverReposition();
 }
@@ -4018,7 +4021,7 @@ async function restorePendingReorderScrollAnchor(collection) {
 
   pending.scrollAnchor = null;
 
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  await nextAnimationFrame();
 
   const target = Array.from(document.querySelectorAll(selector)).find(
     (element) => element.dataset[datasetKey] === anchor.itemId,
@@ -4103,7 +4106,7 @@ async function playPendingReorderAnimation(collection) {
 
   pending.reorder = null;
 
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  await nextAnimationFrame();
 
   const cards = Array.from(document.querySelectorAll(selector));
 
@@ -4145,7 +4148,7 @@ async function playPendingInsertEffects(collection) {
 
   pendingInteraction.insert = null;
 
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  await nextAnimationFrame();
 
   const target = Array.from(document.querySelectorAll(selector)).find(
     (element) => element.dataset[datasetKey] === pending.itemId,
@@ -4236,7 +4239,7 @@ function renderGlobalOptions(root) {
     ],
   ];
 
-  shortcutColumns.forEach((entries, index) => {
+  shortcutColumns.forEach((entries) => {
     const column = document.createElement("div");
     column.className = "config-column global-options-column global-options-shortcuts-column";
     const shortcutGroup = createIntrinsicStackGroup("shortcut-list");
@@ -4740,7 +4743,7 @@ function createProxyDependencyNote(proxyId, containerIntegrity) {
 }
 
 function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
-  let draft = {
+  const draft = {
     id: proxy.id,
     title: proxy.title,
     type: proxy.type,
@@ -5384,12 +5387,6 @@ function createHostRuleCard(
   function getCurrentMissingExceptionIds() {
     return draft.exceptions.filter(
       (cookieStoreId) => !containerChoiceById.has(cookieStoreId),
-    );
-  }
-
-  function getCurrentAmbiguousExceptionIds() {
-    return draft.exceptions.filter((cookieStoreId) =>
-      ambiguousContainerIds.has(cookieStoreId),
     );
   }
 

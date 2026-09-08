@@ -4385,7 +4385,9 @@ test("automatically reopens blocked main_frame requests when exactly one allowed
 
     assert.deepStrictEqual(result, { cancel: true });
 
-    await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 
     assert.deepStrictEqual(ctx.browserMock.tabs.created, [
       {

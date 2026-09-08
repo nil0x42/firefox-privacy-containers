@@ -9,12 +9,15 @@
   "scripts": {
     "benchmark": "node dev/benchmark.js",
     "check": "npm test && npm run lint && npm run package:check",
-    "lint": "web-ext lint --source-dir . --ignore-files '*.md' package.json package-lock.json 'tests/**' 'dev/**' '.github/**' 'dist/**'",
+    "lint": "npm run lint:js && npm run lint:addon",
+    "lint:addon": "web-ext lint --source-dir . --ignore-files '*.md' package.json package-lock.json eslint.config.js 'tests/**' 'dev/**' '.github/**' 'dist/**'",
+    "lint:js": "eslint .",
     "package": "bash dev/package-addon.sh",
     "package:check": "bash dev/check-package.sh",
     "test": "node --test tests/*.test.js tests/run-tests.js"
   },
   "devDependencies": {
+    "eslint": "^10.10.0",
     "jsdom": "^29.1.1",
     "web-ext": "10.6.0"
   }

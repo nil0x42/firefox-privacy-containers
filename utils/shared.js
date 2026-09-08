@@ -806,7 +806,6 @@ import {
   }
 
   function normalizeConfig(rawConfig) {
-    const defaults = createDefaultConfig();
     const raw = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
     const legacyBypass = raw.bypass && typeof raw.bypass === "object" ? raw.bypass : {};
     const proxies = Array.isArray(raw.proxies)
@@ -1134,13 +1133,6 @@ import {
     }
 
     return false;
-  }
-
-  function hostMatchesCompiledSet(host, compiledRules) {
-    return hostMatchesCompiledNormalizedHost(
-      normalizeHostRule(host),
-      compiledRules,
-    );
   }
 
   function compileHostPattern(pattern) {
