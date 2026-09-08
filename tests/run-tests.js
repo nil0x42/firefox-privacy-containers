@@ -582,11 +582,14 @@ test("parses request targets for http, https, ws and wss", () => {
 });
 
 test("builds normalized request contexts once for runtime consumers", () => {
+  const context = Shared.buildRequestContext({
+    url: "https://LOCALHOST:8443/path",
+    method: "options",
+  });
+  assert.strictEqual(context.targetParsed, false);
+  Shared.ensureRequestTarget(context);
   assert.deepStrictEqual(
-    Shared.buildRequestContext({
-      url: "https://LOCALHOST:8443/path",
-      method: "options",
-    }),
+    context,
     {
       cookieStoreId: Shared.FIREFOX_DEFAULT_CONTAINER,
       method: "OPTIONS",
@@ -595,6 +598,7 @@ test("builds normalized request contexts once for runtime consumers", () => {
         protocol: "https:",
         host: "localhost",
       },
+      targetParsed: true,
       isLoopback: true,
       url: "https://LOCALHOST:8443/path",
     },
@@ -4682,6 +4686,60 @@ test("rebuilds only the affected runtime slices on config changes", async () => 
     assert.notStrictEqual(
       ctx.background.state.runtime.hostRuleRuntime,
       hostRuleRuntime,
+    );
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("parses request targets only when routing needs the host", () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.state.config = Shared.normalizeConfig({ hostRules: [] });
+    ctx.background.rebuildRuntime();
+    const directRequest = {
+      url: "https://example.com/direct",
+      method: "GET",
+      cookieStoreId: Shared.FIREFOX_DEFAULT_CONTAINER,
+      requestId: "direct-request",
+      type: "xmlhttprequest",
+    };
+
+    assert.strictEqual(ctx.background.setProxy(directRequest), null);
+    assert.strictEqual(
+      ctx.background.state.requestContextCachePrimary.context.targetParsed,
+      false,
+    );
+    assert.deepStrictEqual(ctx.background.enforceHostRules(directRequest), {});
+    assert.strictEqual(
+      ctx.background.state.requestContextCachePrimary.context.targetParsed,
+      false,
+    );
+
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-1",
+          name: "Block example",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: [],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+    const ruledRequest = {
+      ...directRequest,
+      requestId: "ruled-request",
+    };
+    assert.deepStrictEqual(ctx.background.enforceHostRules(ruledRequest), {
+      cancel: true,
+    });
+    assert.strictEqual(
+      ctx.background.state.requestContextCachePrimary.context.targetParsed,
+      true,
     );
   } finally {
     ctx.cleanup();

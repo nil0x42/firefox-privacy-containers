@@ -1031,21 +1031,32 @@ import {
   }
 
   function buildRequestContext(requestDetails) {
-    const target = parseRequestTarget(requestDetails && requestDetails.url);
-    const normalizedHost = target ? target.host : "";
-
     return {
       cookieStoreId: getEffectiveCookieStoreId(
         requestDetails && requestDetails.cookieStoreId,
       ),
       method: normalizeText(requestDetails && requestDetails.method).toUpperCase(),
-      normalizedHost,
-      target,
-      isLoopback: normalizedHost
-        ? isLoopbackNormalizedHost(normalizedHost)
-        : false,
+      normalizedHost: "",
+      target: null,
+      targetParsed: false,
+      isLoopback: false,
       url: normalizeText(requestDetails && requestDetails.url),
     };
+  }
+
+  function ensureRequestTarget(context) {
+    if (!context || context.targetParsed) {
+      return context;
+    }
+
+    const target = parseRequestTarget(context.url);
+    context.target = target;
+    context.normalizedHost = target ? target.host : "";
+    context.isLoopback = context.normalizedHost
+      ? isLoopbackNormalizedHost(context.normalizedHost)
+      : false;
+    context.targetParsed = true;
+    return context;
   }
 
   function hostMatchesNormalizedRule(host, rule) {
@@ -2302,6 +2313,7 @@ import {
     buildCookieQueryDetails,
     buildCookieRemovalDetails,
     buildRequestContext,
+    ensureRequestTarget,
     getAssignedProxy,
     getAssignedProxyId,
     getContainerIdForSlot,

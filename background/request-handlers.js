@@ -68,6 +68,7 @@ export function createRequestHandlers(deps) {
         return { kind: ROUTE_PROXY, context, plan };
       }
 
+      Shared.ensureRequestTarget(context);
       if (!context.target) {
         return createBlockedRoute(context);
       }
@@ -278,6 +279,7 @@ export function createRequestHandlers(deps) {
         return {};
       }
 
+      Shared.ensureRequestTarget(context);
       if (!context.normalizedHost) {
         return {};
       }
