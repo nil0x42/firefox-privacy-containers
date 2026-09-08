@@ -40,6 +40,7 @@ import {
   normalizeBoolean,
   normalizeText,
 } from "../domain/values.js";
+import { createId } from "../domain/ids.js";
 import {
   BLOCKED_REOPEN_PREFIXES,
   canReopenTabUrl,
@@ -172,7 +173,7 @@ import {
   }
 
   function createHostRuleId() {
-    return `host-rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return createId("host-rule");
   }
 
   function normalizeHostRule(value) {
@@ -498,7 +499,7 @@ import {
   }
 
   function createProxyId() {
-    return `proxy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return createId("proxy");
   }
 
   function normalizeProxy(proxy, fallbackId) {
@@ -627,9 +628,7 @@ import {
   }
 
   function createHeaderId(prefix) {
-    return `${prefix || "header"}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
+    return createId(prefix || "header");
   }
 
   function normalizeHeaderEntry(entry, fallbackId) {

@@ -7,6 +7,7 @@ import {
 } from "./config-client.js";
 import * as OptionsUi from "../domain/ui-state.js";
 import * as Container from "../domain/containers.js";
+import { createId } from "../domain/ids.js";
 import * as Shortcut from "../domain/shortcuts.js";
 import {
   createConfigDraftController,
@@ -1008,9 +1009,9 @@ function createContainerProxyPicker(selectedProxyId, onChange) {
   searchBar.appendChild(createProxyButton);
 
   const optionList = document.createElement("div");
-  const listboxId = `container-proxy-list-${selectedProxyId || "direct"}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
+  const listboxId = createId(
+    `container-proxy-list-${selectedProxyId || "direct"}`,
+  );
   optionList.className = "picker-option-list";
   optionList.id = listboxId;
   optionList.setAttribute("role", "listbox");
@@ -2704,15 +2705,11 @@ function getShortcutStateFingerprint(commands) {
   );
 }
 
-function createTransferId(prefix) {
-  return `${prefix}-${crypto.randomUUID()}`;
-}
-
 async function initializeTransferMetadata() {
   const stored = await browser.storage.local.get(ConfigTransfer.INSTANCE_KEY);
   state.transferInstanceId = stored[ConfigTransfer.INSTANCE_KEY] || "";
   if (!state.transferInstanceId) {
-    state.transferInstanceId = createTransferId("instance");
+    state.transferInstanceId = createId("instance");
     await browser.storage.local.set({
       [ConfigTransfer.INSTANCE_KEY]: state.transferInstanceId,
     });
@@ -3074,7 +3071,7 @@ async function clearImportTransaction() {
 function createImportTransaction(snapshot, shortcuts) {
   return {
     version: ConfigTransfer.TRANSACTION_VERSION,
-    id: createTransferId("import"),
+    id: createId("import"),
     phase: "creating",
     writerId: state.writerId,
     initialRevision: snapshot.revision,

@@ -1,5 +1,6 @@
 import { showNotification } from "./notifications.js";
 import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
+import { createId } from "../domain/ids.js";
 import { canReopenTabUrl } from "../domain/tabs.js";
 import { isRecord } from "../domain/values.js";
 
@@ -165,7 +166,7 @@ export function createBlockedPageStore(deps) {
     }
 
     function createBlockedPageEntryId() {
-      return `blocked-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return createId("blocked");
     }
 
     function cleanupBlockedPageEntries(now) {

@@ -1,8 +1,5 @@
 import Shared from "../utils/shared.js";
-
-function createWriterId() {
-  return `options-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+import { createId } from "../domain/ids.js";
 
 export function createOptionsState() {
   const defaultConfig = Shared.createDefaultConfig();
@@ -37,7 +34,7 @@ export function createOptionsState() {
     saveInFlight: false,
     savePromise: Promise.resolve(),
     saveTimer: 0,
-    writerId: createWriterId(),
+    writerId: createId("options"),
     pendingFocusRestore: null,
     dismissedStatusSignature: "",
     lastStatusSignature: "",
