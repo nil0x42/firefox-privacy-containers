@@ -448,6 +448,7 @@ const {
   discardPendingConfigDraft,
   flushConfigSave,
   persistConfigNow,
+  receiveRemoteBundle,
   scheduleConfigSave,
   setPersistedBundle,
   syncDraftWithPersistedBundle,
@@ -457,6 +458,9 @@ const {
   setStatus,
   clearStatus,
   setConflictStatus: setConfigReloadBlockedStatus,
+  onRemoteBundleApplied: () => {
+    render().catch((error) => setStatus(error.message, true));
+  },
   timerApi: globalThis.window || globalThis,
 });
 
@@ -5964,24 +5968,7 @@ function bindEvents() {
       return;
     }
 
-    if (nextBundle.meta.revision <= state.persistedMeta.revision) {
-      return;
-    }
-
-    if (state.saveInFlight) {
-      return;
-    }
-
-    if (!state.dirty && !state.saveInFlight) {
-      syncDraftWithPersistedBundle(nextBundle);
-      render().catch((error) => setStatus(error.message, true));
-      return;
-    }
-
-    if (nextBundle.meta.revision > state.persistedMeta.revision) {
-      setPersistedBundle(nextBundle);
-      setConfigReloadBlockedStatus();
-    }
+    receiveRemoteBundle(nextBundle);
   });
 
   if (browser.commands && browser.commands.onChanged) {

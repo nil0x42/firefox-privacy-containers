@@ -73,3 +73,100 @@ test("keeps a conflicting draft dirty for an explicit reload", async () => {
   assert.equal(conflictShown, true);
   assert.equal(state.dirty, true);
 });
+
+test("reconciles the newest remote revision received during a save", async () => {
+  const state = createOptionsState();
+  let finishSave;
+  let remoteApplyCount = 0;
+  const saveReady = new Promise((resolve) => {
+    finishSave = resolve;
+  });
+  const controller = createConfigDraftController({
+    state,
+    clearStatus() {},
+    setConflictStatus() {},
+    setStatus() {},
+    onRemoteBundleApplied() {
+      remoteApplyCount += 1;
+    },
+    timerApi: globalThis,
+    async saveConfigBundle(expectedRevision, config) {
+      await saveReady;
+      return Shared.createConfigBundle(config, {
+        revision: expectedRevision + 1,
+      });
+    },
+  });
+  controller.syncDraftWithPersistedBundle(
+    Shared.createConfigBundle(Shared.createDefaultConfig(), { revision: 10 }),
+  );
+  controller.markDraftDirty();
+  const saving = controller.flushConfigSave();
+  await Promise.resolve();
+
+  const remoteConfig = Shared.createDefaultConfig();
+  remoteConfig.globalHeaders = [
+    { id: "remote", name: "X-Remote", value: "12" },
+  ];
+  assert.equal(
+    controller.receiveRemoteBundle(
+      Shared.createConfigBundle(remoteConfig, { revision: 12 }),
+    ),
+    "deferred",
+  );
+
+  finishSave();
+  await saving;
+
+  assert.equal(state.persistedMeta.revision, 12);
+  assert.deepStrictEqual(state.config, remoteConfig);
+  assert.equal(state.dirty, false);
+  assert.equal(remoteApplyCount, 1);
+});
+
+test("blocks a newer local draft when a remote save wins concurrently", async () => {
+  const state = createOptionsState();
+  let finishSave;
+  let conflictShown = false;
+  const saveReady = new Promise((resolve) => {
+    finishSave = resolve;
+  });
+  const controller = createConfigDraftController({
+    state,
+    clearStatus() {},
+    setConflictStatus() {
+      conflictShown = true;
+      state.saveBlockedReason = "Configuration changed elsewhere.";
+    },
+    setStatus() {},
+    timerApi: globalThis,
+    async saveConfigBundle(expectedRevision, config) {
+      await saveReady;
+      return Shared.createConfigBundle(config, {
+        revision: expectedRevision + 1,
+      });
+    },
+  });
+  controller.syncDraftWithPersistedBundle(
+    Shared.createConfigBundle(Shared.createDefaultConfig(), { revision: 20 }),
+  );
+  controller.markDraftDirty();
+  const saving = controller.flushConfigSave();
+  await Promise.resolve();
+
+  state.config.globalHeaders = [
+    { id: "local", name: "X-Local", value: "draft" },
+  ];
+  controller.markDraftDirty();
+  controller.receiveRemoteBundle(
+    Shared.createConfigBundle(Shared.createDefaultConfig(), { revision: 22 }),
+  );
+
+  finishSave();
+  await assert.rejects(saving, /changed elsewhere/);
+
+  assert.equal(state.persistedMeta.revision, 22);
+  assert.equal(state.config.globalHeaders[0].value, "draft");
+  assert.equal(state.dirty, true);
+  assert.equal(conflictShown, true);
+});

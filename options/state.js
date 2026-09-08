@@ -22,6 +22,7 @@ export function createOptionsState() {
       hostRules: { reorder: null, scrollAnchor: null, insert: null },
     },
     pendingIdentitySaves: new Map(),
+    pendingRemoteBundle: null,
     pendingSaveMessage: "Saved.",
     persistedConfig: Shared.clone(defaultConfig),
     persistedMeta: Shared.createConfigBundle(defaultConfig, {}).meta,
@@ -50,6 +51,7 @@ export function createConfigDraftController({
   setStatus,
   clearStatus,
   setConflictStatus,
+  onRemoteBundleApplied = () => undefined,
   timerApi,
 }) {
   function setPersistedBundle(bundle) {
@@ -64,6 +66,48 @@ export function createConfigDraftController({
     state.draftVersion += 1;
     state.dirty = false;
     state.saveBlockedReason = "";
+  }
+
+  function applyRemoteBundle(bundle) {
+    if (bundle.meta.revision <= state.persistedMeta.revision) {
+      return "ignored";
+    }
+
+    if (!state.dirty && !state.saveInFlight) {
+      syncDraftWithPersistedBundle(bundle);
+      onRemoteBundleApplied();
+      return "applied";
+    }
+
+    setPersistedBundle(bundle);
+    setConflictStatus();
+    return "conflict";
+  }
+
+  function receiveRemoteBundle(bundle) {
+    const normalizedBundle = Shared.normalizeConfigBundle(bundle);
+    if (normalizedBundle.meta.revision <= state.persistedMeta.revision) {
+      return "ignored";
+    }
+
+    if (!state.saveInFlight) {
+      return applyRemoteBundle(normalizedBundle);
+    }
+
+    if (
+      !state.pendingRemoteBundle ||
+      normalizedBundle.meta.revision >
+        state.pendingRemoteBundle.meta.revision
+    ) {
+      state.pendingRemoteBundle = normalizedBundle;
+    }
+    return "deferred";
+  }
+
+  function reconcilePendingRemoteBundle() {
+    const bundle = state.pendingRemoteBundle;
+    state.pendingRemoteBundle = null;
+    return bundle ? applyRemoteBundle(bundle) : "ignored";
   }
 
   function markDraftDirty() {
@@ -147,6 +191,7 @@ export function createConfigDraftController({
       .finally(() => {
         state.saveInFlight = false;
         state.suppressSaveStatus = false;
+        reconcilePendingRemoteBundle();
       });
 
     await state.savePromise;
@@ -178,6 +223,7 @@ export function createConfigDraftController({
     flushConfigSave,
     markDraftDirty,
     persistConfigNow,
+    receiveRemoteBundle,
     scheduleConfigSave,
     setPersistedBundle,
     syncDraftWithPersistedBundle,
