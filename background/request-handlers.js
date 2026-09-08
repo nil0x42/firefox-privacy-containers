@@ -1,3 +1,9 @@
+import {
+  ensureRequestTarget,
+  getEffectiveCookieStoreId,
+  normalizeHostRule,
+} from "../domain/hosts.js";
+
 export function createRequestHandlers(deps) {
     const {
       state,
@@ -68,7 +74,7 @@ export function createRequestHandlers(deps) {
         return { kind: ROUTE_PROXY, context, plan };
       }
 
-      Shared.ensureRequestTarget(context);
+      ensureRequestTarget(context);
       if (!context.target) {
         return createBlockedRoute(context);
       }
@@ -181,7 +187,7 @@ export function createRequestHandlers(deps) {
 
     function addHeaders(requestDetails) {
       const runtime = state.runtime;
-      const cookieStoreId = Shared.getEffectiveCookieStoreId(
+      const cookieStoreId = getEffectiveCookieStoreId(
         requestDetails.cookieStoreId,
       );
       const plan = runtime.headerRuntime.planByContainerId[cookieStoreId];
@@ -201,7 +207,7 @@ export function createRequestHandlers(deps) {
       const proxyInfo = details.proxyInfo;
       if (proxyInfo) {
         return (
-          Shared.normalizeHostRule(proxyInfo.host) === plan.host &&
+          normalizeHostRule(proxyInfo.host) === plan.host &&
           Number(proxyInfo.port) === plan.port &&
           proxyInfo.type === plan.type
         );
@@ -213,7 +219,7 @@ export function createRequestHandlers(deps) {
       }
 
       return (
-        Shared.normalizeHostRule(challenger.host) === plan.host &&
+        normalizeHostRule(challenger.host) === plan.host &&
         Number(challenger.port) === plan.port
       );
     }
@@ -224,7 +230,7 @@ export function createRequestHandlers(deps) {
       }
 
       const runtime = state.runtime;
-      const cookieStoreId = Shared.getEffectiveCookieStoreId(
+      const cookieStoreId = getEffectiveCookieStoreId(
         details && details.cookieStoreId,
       );
       const plan = runtime.proxyRuntime.planByContainerId[cookieStoreId];
@@ -266,7 +272,7 @@ export function createRequestHandlers(deps) {
           : route.kind === ROUTE_PROXY &&
             proxyInfo &&
             proxyInfo.type === route.plan.type &&
-            Shared.normalizeHostRule(proxyInfo.host) === route.plan.host &&
+            normalizeHostRule(proxyInfo.host) === route.plan.host &&
             Number(proxyInfo.port) === route.plan.port;
 
       if (!isAppliedRouteValid) {
@@ -279,7 +285,7 @@ export function createRequestHandlers(deps) {
         return {};
       }
 
-      Shared.ensureRequestTarget(context);
+      ensureRequestTarget(context);
       if (!context.normalizedHost) {
         return {};
       }

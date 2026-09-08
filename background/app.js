@@ -47,7 +47,6 @@ export function createBackgroundApp(deps = {}) {
     state,
   });
   const requestContextCache = createRequestContextCache({
-    Shared: sharedApi,
     state,
   });
   const tabActions = createTabActions({

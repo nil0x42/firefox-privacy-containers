@@ -3295,48 +3295,29 @@ test("reuses and promotes entries in the extracted request context cache module"
       context: null,
     },
   };
-  const requestContextCache = createRequestContextCache({ state, Shared });
-  const originalBuildRequestContext = Shared.buildRequestContext;
-  let callCount = 0;
+  const requestContextCache = createRequestContextCache({ state });
+  const first = requestContextCache.getRequestContext({
+    url: "https://example.com/a",
+    method: "GET",
+    cookieStoreId: "firefox-container-1",
+    requestId: "req-1",
+  });
+  const second = requestContextCache.getRequestContext({
+    url: "https://example.com/b",
+    method: "GET",
+    cookieStoreId: "firefox-container-1",
+    requestId: "req-2",
+  });
+  const promoted = requestContextCache.getRequestContext({
+    url: "https://example.com/a",
+    method: "GET",
+    cookieStoreId: "firefox-container-1",
+    requestId: "req-1",
+  });
 
-  Shared.buildRequestContext = (details) => {
-    callCount += 1;
-    return originalBuildRequestContext(details);
-  };
-
-  try {
-    const first = requestContextCache.getRequestContext({
-      url: "https://example.com/a",
-      method: "GET",
-      cookieStoreId: "firefox-container-1",
-      requestId: "req-1",
-    });
-    const second = requestContextCache.getRequestContext({
-      url: "https://example.com/b",
-      method: "GET",
-      cookieStoreId: "firefox-container-1",
-      requestId: "req-2",
-    });
-    const promoted = requestContextCache.getRequestContext({
-      url: "https://example.com/a",
-      method: "GET",
-      cookieStoreId: "firefox-container-1",
-      requestId: "req-1",
-    });
-
-    assert.strictEqual(callCount, 2);
-    assert.deepStrictEqual(promoted, first);
-    assert.deepStrictEqual(
-      state.requestContextCachePrimary.context,
-      first,
-    );
-    assert.deepStrictEqual(
-      state.requestContextCacheSecondary.context,
-      second,
-    );
-  } finally {
-    Shared.buildRequestContext = originalBuildRequestContext;
-  }
+  assert.strictEqual(promoted, first);
+  assert.strictEqual(state.requestContextCachePrimary.context, first);
+  assert.strictEqual(state.requestContextCacheSecondary.context, second);
 });
 
 test("rebuilds selected runtime slices in the extracted runtime manager module", () => {
@@ -4729,13 +4710,6 @@ test("parses request targets only when routing needs the host", () => {
 
 test("reuses cached request contexts across runtime listeners for the same request", () => {
   const ctx = loadBackgroundModule();
-  const originalBuildRequestContext = Shared.buildRequestContext;
-  let callCount = 0;
-
-  Shared.buildRequestContext = (details) => {
-    callCount += 1;
-    return originalBuildRequestContext(details);
-  };
 
   try {
     ctx.background.setContainerCache([]);
@@ -4773,6 +4747,7 @@ test("reuses cached request contexts across runtime listeners for the same reque
       cookieStoreId: "firefox-container-1",
       requestId: "request-1",
     });
+    const proxyContext = ctx.background.state.requestContextCachePrimary.context;
     ctx.background.enforceHostRules({
       url: "https://example.com/app",
       method: "GET",
@@ -4781,22 +4756,17 @@ test("reuses cached request contexts across runtime listeners for the same reque
       requestId: "request-1",
     });
 
-    assert.strictEqual(callCount, 1);
+    assert.strictEqual(
+      ctx.background.state.requestContextCachePrimary.context,
+      proxyContext,
+    );
   } finally {
-    Shared.buildRequestContext = originalBuildRequestContext;
     ctx.cleanup();
   }
 });
 
 test("keeps the previous request context hot across one interleaved request", () => {
   const ctx = loadBackgroundModule();
-  const originalBuildRequestContext = Shared.buildRequestContext;
-  let callCount = 0;
-
-  Shared.buildRequestContext = (details) => {
-    callCount += 1;
-    return originalBuildRequestContext(details);
-  };
 
   try {
     ctx.background.setContainerCache([]);
@@ -4834,12 +4804,14 @@ test("keeps the previous request context hot across one interleaved request", ()
       cookieStoreId: "firefox-container-1",
       requestId: "request-1",
     });
+    const firstContext = ctx.background.state.requestContextCachePrimary.context;
     ctx.background.setProxy({
       url: "https://example.com/other",
       method: "GET",
       cookieStoreId: "firefox-container-1",
       requestId: "request-2",
     });
+    const secondContext = ctx.background.state.requestContextCachePrimary.context;
     ctx.background.enforceHostRules({
       url: "https://example.com/app",
       method: "GET",
@@ -4847,6 +4819,10 @@ test("keeps the previous request context hot across one interleaved request", ()
       cookieStoreId: "firefox-container-1",
       requestId: "request-1",
     });
+    assert.strictEqual(
+      ctx.background.state.requestContextCachePrimary.context,
+      firstContext,
+    );
     ctx.background.enforceHostRules({
       url: "https://example.com/other",
       method: "GET",
@@ -4855,9 +4831,11 @@ test("keeps the previous request context hot across one interleaved request", ()
       requestId: "request-2",
     });
 
-    assert.strictEqual(callCount, 2);
+    assert.strictEqual(
+      ctx.background.state.requestContextCachePrimary.context,
+      secondContext,
+    );
   } finally {
-    Shared.buildRequestContext = originalBuildRequestContext;
     ctx.cleanup();
   }
 });

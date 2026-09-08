@@ -1,7 +1,11 @@
+import {
+  buildRequestContext,
+  getEffectiveCookieStoreId,
+} from "../domain/hosts.js";
 import { normalizeText } from "../domain/values.js";
 
 export function createRequestContextCache(deps) {
-    const { state, Shared } = deps;
+    const { state } = deps;
 
     function doesSlotMatch(slot, requestId, cookieStoreId, method, url) {
       return Boolean(
@@ -31,10 +35,10 @@ export function createRequestContextCache(deps) {
     function getRequestContext(requestDetails) {
       const requestId = normalizeText(requestDetails && requestDetails.requestId);
       if (!requestId) {
-        return Shared.buildRequestContext(requestDetails);
+        return buildRequestContext(requestDetails);
       }
 
-      const cookieStoreId = Shared.getEffectiveCookieStoreId(
+      const cookieStoreId = getEffectiveCookieStoreId(
         requestDetails && requestDetails.cookieStoreId,
       );
       const method =
@@ -68,7 +72,7 @@ export function createRequestContextCache(deps) {
         return state.requestContextCachePrimary.context;
       }
 
-      const context = Shared.buildRequestContext(requestDetails);
+      const context = buildRequestContext(requestDetails);
       writeSlot(
         state.requestContextCacheSecondary,
         state.requestContextCachePrimary.requestId,
