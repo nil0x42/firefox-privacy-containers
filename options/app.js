@@ -2638,7 +2638,7 @@ async function assertTransferStateUnchanged(snapshot) {
   const [bundle, containers, commands] = await Promise.all([
     getConfigBundle(),
     browser.contextualIdentities.query({}),
-    browser.commands.getAll ? browser.commands.getAll() : Promise.resolve([]),
+    browser.commands.getAll(),
   ]);
   if (
     bundle.meta.revision !== snapshot.revision ||
@@ -2717,10 +2717,6 @@ async function importShortcutSnapshot(shortcuts) {
   if (!target.size) {
     return { failedNames: [], restoreFailedNames: [] };
   }
-  if (!browser.commands?.getAll || !browser.commands?.update) {
-    return { failedNames: Array.from(target.keys()), restoreFailedNames: [] };
-  }
-
   return withSuppressedCommandChangeEvents(async () => {
     const local = getCommandShortcutSnapshot(
       Array.from(target.keys()),
@@ -3391,12 +3387,6 @@ async function swapShortcutAssignmentsBetweenSlots(slotA, slotB) {
     return {
       message:
         `Container moved. Shortcut assignments only follow moves within the first ${Shortcut.SHORTCUT_SLOT_COUNT} positions.`,
-    };
-  }
-
-  if (!browser.commands || !browser.commands.getAll || !browser.commands.update) {
-    return {
-      message: "Container moved.",
     };
   }
 
