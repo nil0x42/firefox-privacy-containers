@@ -1699,8 +1699,13 @@ test("serializes configuration writes and rejects stale revisions", async () => 
     Shared,
     browser: { storage: { local: storage } },
     writerId: "background",
-    async onChanged(bundle) {
-      applied.push(bundle.meta.revision);
+    prepareChange(bundle) {
+      return {
+        commit() {
+          applied.push(bundle.meta.revision);
+        },
+        reconcile() {},
+      };
     },
   });
   await service.initialize();
@@ -1725,6 +1730,64 @@ test("serializes configuration writes and rejects stale revisions", async () => 
   assert.deepStrictEqual(applied, [1, 2]);
 });
 
+test("prepares config changes before storage and isolates reconciliation failures", async () => {
+  const initialBundle = Shared.createConfigBundle(Shared.createDefaultConfig(), {
+    revision: 0,
+  });
+  const storage = createLocalStorageMock({ [Shared.CONFIG_KEY]: initialBundle });
+  const storedRevisions = [];
+  const set = storage.set;
+  storage.set = async (entries) => {
+    storedRevisions.push(entries[Shared.CONFIG_KEY].meta.revision);
+    await set(entries);
+  };
+  let shouldFailPreparation = true;
+  let committedRevision = 0;
+  const service = createConfigService({
+    Shared,
+    browser: { storage: { local: storage } },
+    writerId: "background",
+    prepareChange(bundle) {
+      if (shouldFailPreparation) {
+        throw new Error("compile failed");
+      }
+      return {
+        commit() {
+          committedRevision = bundle.meta.revision;
+        },
+        async reconcile() {
+          throw new Error("badge failed");
+        },
+      };
+    },
+  });
+  await service.initialize();
+  const nextConfig = Shared.createDefaultConfig();
+  nextConfig.globalHeaders.push({ name: "X-Test", value: "1" });
+
+  await assert.rejects(service.save(0, nextConfig), /compile failed/);
+  assert.deepStrictEqual(storedRevisions, []);
+  assert.strictEqual((await service.getBundle()).meta.revision, 0);
+
+  shouldFailPreparation = false;
+  const originalConsoleError = console.error;
+  const loggedErrors = [];
+  console.error = (...args) => {
+    loggedErrors.push(args);
+  };
+  try {
+    const saved = await service.save(0, nextConfig);
+    assert.strictEqual(saved.meta.revision, 1);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.deepStrictEqual(storedRevisions, [1]);
+  assert.strictEqual(committedRevision, 1);
+  assert.strictEqual(loggedErrors.length, 1);
+  assert.strictEqual((await service.getBundle()).meta.revision, 1);
+});
+
 test("migrates the legacy active options tab before storing schema 4", async () => {
   const legacy = {
     meta: { schemaVersion: 3, revision: 7, writer: "options" },
@@ -1744,7 +1807,6 @@ test("migrates the legacy active options tab before storing schema 4", async () 
     Shared,
     browser: { storage: { local: storage } },
     writerId: "background",
-    async onChanged() {},
   });
 
   const bundle = await service.initialize();
@@ -1779,7 +1841,6 @@ test("validates stored configuration before writing migrations", async () => {
     Shared,
     browser: { storage: { local: storage } },
     writerId: "background",
-    async onChanged() {},
   });
 
   await assert.rejects(
@@ -1793,7 +1854,6 @@ test("validates stored configuration before writing migrations", async () => {
     Shared,
     browser: { storage: { local: nullStorage } },
     writerId: "background",
-    async onChanged() {},
   });
   await assert.rejects(
     nullService.initialize(),
@@ -1816,7 +1876,6 @@ test("retries transient configuration initialization failures", async () => {
     Shared,
     browser: { storage: { local: storage } },
     writerId: "background",
-    async onChanged() {},
   });
 
   await assert.rejects(service.initialize(), /Temporary storage failure/);
@@ -1840,7 +1899,6 @@ test("caches permanent configuration initialization failures", async () => {
     Shared,
     browser: { storage: { local: storage } },
     writerId: "background",
-    async onChanged() {},
   });
 
   await assert.rejects(

@@ -68,40 +68,57 @@ export function createLifecycleController(deps) {
       return Boolean(setting && setting.pwnFoxColorEnabled);
     }
 
-    async function handleConfigChanged(newConfig) {
+    function prepareConfigChange(newConfig) {
       const nextBundle = Shared.normalizeConfigBundle(newConfig);
       if (nextBundle.meta.revision <= state.configMeta.revision) {
-        return;
+        return null;
       }
 
       const previousConfig = state.config;
       const previousProxyRuntime = state.runtime.proxyRuntime;
-      runtimeManager.applyConfigBundle(nextBundle);
       const parts = runtimeManager.getConfigRuntimePartsToRefresh(
         previousConfig,
-        state.config,
+        nextBundle.config,
       );
-      if (!parts.length) {
-        return;
-      }
-
-      runtimeManager.refreshRuntimeParts(parts);
-
-      if (
+      const nextRuntime = runtimeManager.compileRuntimeParts(
+        nextBundle.config,
+        parts,
+      );
+      const shouldUpdateBadges =
         parts.includes("proxy") &&
         haveBadgeAssignmentsChanged(
           previousProxyRuntime,
-          state.runtime.proxyRuntime,
-        )
-      ) {
-        const changedContainerIds = new Set([
-          ...(previousProxyRuntime.proxiedContainerIds || []),
-          ...(previousProxyRuntime.blockedContainerIds || []),
-          ...(state.runtime.proxyRuntime.proxiedContainerIds || []),
-          ...(state.runtime.proxyRuntime.blockedContainerIds || []),
-        ]);
-        await badges.updateBadgesForContainers(changedContainerIds);
+          nextRuntime.proxyRuntime,
+        );
+      const changedContainerIds = shouldUpdateBadges
+        ? new Set([
+            ...(previousProxyRuntime.proxiedContainerIds || []),
+            ...(previousProxyRuntime.blockedContainerIds || []),
+            ...(nextRuntime.proxyRuntime.proxiedContainerIds || []),
+            ...(nextRuntime.proxyRuntime.blockedContainerIds || []),
+          ])
+        : null;
+
+      return {
+        commit() {
+          runtimeManager.commitConfigBundle(nextBundle, nextRuntime);
+        },
+        async reconcile() {
+          if (changedContainerIds) {
+            await badges.updateBadgesForContainers(changedContainerIds);
+          }
+        },
+      };
+    }
+
+    async function handleConfigChanged(newConfig) {
+      const change = prepareConfigChange(newConfig);
+      if (!change) {
+        return;
       }
+
+      change.commit();
+      await change.reconcile();
     }
 
     async function handleContainerCacheChanged(previousSlotIds, options) {
@@ -250,6 +267,7 @@ export function createLifecycleController(deps) {
       handleContainersChangedMessage,
       initialize,
       mutateConfig,
+      prepareConfigChange,
       reconcileBrowserState,
     };
   }

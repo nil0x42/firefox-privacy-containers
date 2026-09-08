@@ -1,6 +1,11 @@
 import { OPTIONS_UI_KEY, normalizeActiveTab } from "../domain/ui-state.js";
 
-export function createConfigService({ Shared, browser, writerId, onChanged }) {
+export function createConfigService({
+  Shared,
+  browser,
+  writerId,
+  prepareChange = () => null,
+}) {
   let currentBundle = null;
   let initialization = null;
   let writeQueue = Promise.resolve();
@@ -9,6 +14,21 @@ export function createConfigService({ Shared, browser, writerId, onChanged }) {
     const result = writeQueue.then(task, task);
     writeQueue = result.catch(() => undefined);
     return result;
+  }
+
+  async function commitBundle(bundle) {
+    const change = prepareChange(bundle);
+    await browser.storage.local.set({ [Shared.CONFIG_KEY]: bundle });
+    currentBundle = bundle;
+    if (!change) {
+      return bundle;
+    }
+
+    change.commit();
+    await Promise.resolve(change.reconcile()).catch((error) => {
+      console.error("Failed to reconcile committed configuration", error);
+    });
+    return bundle;
   }
 
   function isPermanentInitializationError(error) {
@@ -92,10 +112,7 @@ export function createConfigService({ Shared, browser, writerId, onChanged }) {
         updatedAt: new Date().toISOString(),
         writer: writerId,
       });
-      await browser.storage.local.set({ [Shared.CONFIG_KEY]: bundle });
-      currentBundle = bundle;
-      await onChanged(bundle);
-      return bundle;
+      return commitBundle(bundle);
     });
   }
 
@@ -115,10 +132,7 @@ export function createConfigService({ Shared, browser, writerId, onChanged }) {
         updatedAt: new Date().toISOString(),
         writer: writerId,
       });
-      await browser.storage.local.set({ [Shared.CONFIG_KEY]: bundle });
-      currentBundle = bundle;
-      await onChanged(bundle);
-      return bundle;
+      return commitBundle(bundle);
     });
   }
 

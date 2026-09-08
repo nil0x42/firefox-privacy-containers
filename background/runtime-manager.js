@@ -72,23 +72,23 @@ export function createRuntimeManager(deps) {
       return parts;
     }
 
-    function refreshRuntimeParts(parts) {
+    function compileRuntimeParts(config, parts) {
       const partSet = new Set(Array.isArray(parts) ? parts : [parts]);
       const nextRuntime = { ...state.runtime };
 
       if (partSet.has("proxy")) {
-        nextRuntime.proxyRuntime = Shared.compileProxyRuntime(state.config);
+        nextRuntime.proxyRuntime = Shared.compileProxyRuntime(config);
       }
 
       if (partSet.has("headers")) {
         nextRuntime.headerRuntime = Shared.compileHeaderRuntime(
-          state.config,
+          config,
           state.containers,
         );
       }
 
       if (partSet.has("hostRules")) {
-        nextRuntime.hostRuleRuntime = Shared.compileHostRuleRuntime(state.config);
+        nextRuntime.hostRuleRuntime = Shared.compileHostRuleRuntime(config);
       }
 
       if (partSet.has("shortcuts")) {
@@ -97,7 +97,11 @@ export function createRuntimeManager(deps) {
         );
       }
 
-      state.runtime = nextRuntime;
+      return nextRuntime;
+    }
+
+    function refreshRuntimeParts(parts) {
+      state.runtime = compileRuntimeParts(state.config, parts);
     }
 
     function rebuildRuntime() {
@@ -111,8 +115,15 @@ export function createRuntimeManager(deps) {
       state.configMeta = normalizedBundle.meta;
     }
 
+    function commitConfigBundle(bundle, runtime) {
+      applyConfigBundle(bundle);
+      state.runtime = runtime;
+    }
+
     return {
       applyConfigBundle,
+      commitConfigBundle,
+      compileRuntimeParts,
       getConfigRuntimePartsToRefresh,
       rebuildRuntime,
       refreshRuntimeParts,

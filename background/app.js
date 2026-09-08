@@ -65,7 +65,7 @@ export function createBackgroundApp(deps = {}) {
     Shared: sharedApi,
     browser: browserApi,
     writerId: BACKGROUND_WRITER_ID,
-    onChanged: (bundle) => lifecycle.handleConfigChanged(bundle),
+    prepareChange: (bundle) => lifecycle.prepareConfigChange(bundle),
   });
   const blockedPageStore = createBlockedPageStore({
     browser: browserApi,
