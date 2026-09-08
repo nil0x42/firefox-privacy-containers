@@ -1,9 +1,7 @@
+import { normalizeText } from "../domain/values.js";
+
 export function createRequestContextCache(deps) {
     const { state, Shared } = deps;
-
-    function normalizeMessageText(value) {
-      return value == null ? "" : String(value).trim();
-    }
 
     function doesSlotMatch(slot, requestId, cookieStoreId, method, url) {
       return Boolean(
@@ -31,7 +29,7 @@ export function createRequestContextCache(deps) {
     }
 
     function getRequestContext(requestDetails) {
-      const requestId = normalizeMessageText(requestDetails && requestDetails.requestId);
+      const requestId = normalizeText(requestDetails && requestDetails.requestId);
       if (!requestId) {
         return Shared.buildRequestContext(requestDetails);
       }
@@ -43,7 +41,7 @@ export function createRequestContextCache(deps) {
         requestDetails && typeof requestDetails.method === "string"
           ? requestDetails.method.toUpperCase()
           : "GET";
-      const url = normalizeMessageText(requestDetails && requestDetails.url);
+      const url = normalizeText(requestDetails && requestDetails.url);
 
       if (
         doesSlotMatch(
@@ -92,6 +90,5 @@ export function createRequestContextCache(deps) {
 
     return {
       getRequestContext,
-      normalizeMessageText,
     };
   }

@@ -5473,11 +5473,6 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
         return new Set();
       },
     },
-    requestContextCache: {
-      normalizeMessageText(value) {
-        return value == null ? "" : String(value).trim();
-      },
-    },
     state,
     tabActions: createTabActions({ Shared, browser }),
   });

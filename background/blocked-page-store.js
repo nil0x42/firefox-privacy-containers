@@ -2,7 +2,7 @@ import { showNotification } from "./notifications.js";
 import { FIREFOX_DEFAULT_CONTAINER } from "../domain/containers.js";
 import { createId } from "../domain/ids.js";
 import { canReopenTabUrl } from "../domain/tabs.js";
-import { isRecord } from "../domain/values.js";
+import { isRecord, normalizeText } from "../domain/values.js";
 
 export function createBlockedPageStore(deps) {
     const {
@@ -10,7 +10,6 @@ export function createBlockedPageStore(deps) {
       browser,
       constants,
       containerCache,
-      requestContextCache,
       tabActions,
     } = deps;
     const pendingAutoReopenAttempts = new Set();
@@ -271,9 +270,7 @@ export function createBlockedPageStore(deps) {
     }
 
     async function getBlockedPageContextPayload(message) {
-      const entryId = requestContextCache.normalizeMessageText(
-        message && message.entry,
-      );
+      const entryId = normalizeText(message && message.entry);
       const entry = await getBlockedPageEntry(entryId);
 
       if (!entry) {
@@ -430,13 +427,10 @@ export function createBlockedPageStore(deps) {
     }
 
     async function openBlockedUrlInContainer(message, sender) {
-      const entryId = requestContextCache.normalizeMessageText(
-        message && message.entry,
-      );
+      const entryId = normalizeText(message && message.entry);
       const cookieStoreId =
-        requestContextCache.normalizeMessageText(
-          message && message.cookieStoreId,
-        ) || FIREFOX_DEFAULT_CONTAINER;
+        normalizeText(message && message.cookieStoreId) ||
+        FIREFOX_DEFAULT_CONTAINER;
       const referenceTab = sender && sender.tab ? sender.tab : null;
       const entry = await getBlockedPageEntry(entryId);
 

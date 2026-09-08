@@ -71,7 +71,6 @@ export function createBackgroundApp(deps = {}) {
     browser: browserApi,
     constants,
     containerCache,
-    requestContextCache,
     state,
     tabActions,
   });
