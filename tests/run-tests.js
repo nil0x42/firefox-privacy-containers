@@ -4931,12 +4931,19 @@ test("purges invalid, stale and excess blocked-page session contexts", async () 
     tabId: 7,
     url: "https://example.com/",
     mode: "blacklist",
-    blockedContainer: { cookieStoreId: "firefox-container-9" },
+    blockedContainer: {
+      cookieStoreId: "firefox-container-9",
+      name: "Blocked",
+    },
     allowedContainers: [],
   });
   const values = {
     unrelated: { value: true },
     [`${prefix}invalid`]: { id: 7 },
+    [`${prefix}invalid-container`]: {
+      ...entry("invalid-container", now),
+      allowedContainers: [null],
+    },
     [`${prefix}wrong-key`]: entry("different-id", now),
     [`${prefix}stale`]: entry("stale", now - 1_001),
     [`${prefix}oldest`]: entry("oldest", now - 500),
@@ -4969,8 +4976,9 @@ test("purges invalid, stale and excess blocked-page session contexts", async () 
   await store.cleanupPersistedEntries(now);
 
   assert.deepStrictEqual(removals, [[
-    `${prefix}invalid`,
-    `${prefix}wrong-key`,
+      `${prefix}invalid`,
+      `${prefix}invalid-container`,
+      `${prefix}wrong-key`,
     `${prefix}stale`,
     `${prefix}oldest`,
   ]]);

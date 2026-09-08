@@ -145,6 +145,7 @@
     const link = document.createElement("a");
     link.className = "blocked-action-button";
     link.href = blockedUrl || "#";
+    link.draggable = false;
     if (entry.color) {
       link.style.setProperty("--container-accent", entry.color);
     }
@@ -179,8 +180,8 @@
     link.appendChild(top);
 
     link.addEventListener("click", async (event) => {
+      event.preventDefault();
       if (link.getAttribute("aria-disabled") === "true") {
-        event.preventDefault();
         return;
       }
 
@@ -194,7 +195,6 @@
         return;
       }
 
-      event.preventDefault();
       setError("");
       link.setAttribute("aria-disabled", "true");
 
@@ -208,6 +208,12 @@
         link.removeAttribute("aria-disabled");
         setError(error && error.message ? error.message : String(error));
       }
+    });
+    link.addEventListener("auxclick", (event) => {
+      event.preventDefault();
+    });
+    link.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
     });
 
     return link;
@@ -235,19 +241,15 @@
     setText("blocked-host", context.host);
     setInputValue("blocked-url", context.url || "");
     bindCopyUrlButton(context.url || "");
-    setText(
-      "blocked-container",
-      context.container && context.container.name
-        ? context.container.name
-        : params.container,
-    );
+    const containerName = context.container?.name || "Unknown container";
+    setText("blocked-container", containerName);
 
     const summary = document.getElementById("blocked-summary");
     if (summary) {
       summary.textContent =
         context.mode === "blacklist"
-          ? `The host "${context.host}" matched "${context.ruleName}" and is blocked in ${context.container.name}.`
-          : `The host "${context.host}" matched "${context.ruleName}" and ${context.container.name} is blocked by that rule.`;
+          ? `The host "${context.host}" matched "${context.ruleName}" and is blocked in ${containerName}.`
+          : `The host "${context.host}" matched "${context.ruleName}" and ${containerName} is blocked by that rule.`;
     }
 
     const allowedSection = document.getElementById("blocked-allowed-section");
@@ -290,6 +292,10 @@
     }
   }
 
-  init().catch((error) => {
-    setError(error && error.message ? error.message : String(error));
-  });
+  export { createAllowedContainerButton, init };
+
+  if (typeof document !== "undefined") {
+    init().catch((error) => {
+      setError(error && error.message ? error.message : String(error));
+    });
+  }

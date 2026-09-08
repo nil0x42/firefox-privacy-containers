@@ -40,6 +40,16 @@ export function createBlockedPageStore(deps) {
       });
     }
 
+    function isUsableContainerSnapshot(container) {
+      return (
+        isRecord(container) &&
+        typeof container.cookieStoreId === "string" &&
+        Boolean(container.cookieStoreId) &&
+        typeof container.name === "string" &&
+        Boolean(container.name)
+      );
+    }
+
     function isUsableStoredEntry(entry) {
       return (
         isRecord(entry) &&
@@ -49,8 +59,9 @@ export function createBlockedPageStore(deps) {
         (entry.tabId === null || Number.isInteger(entry.tabId)) &&
         typeof entry.url === "string" &&
         (entry.mode === "blacklist" || entry.mode === "whitelist") &&
-        isRecord(entry.blockedContainer) &&
-        Array.isArray(entry.allowedContainers)
+        isUsableContainerSnapshot(entry.blockedContainer) &&
+        Array.isArray(entry.allowedContainers) &&
+        entry.allowedContainers.every(isUsableContainerSnapshot)
       );
     }
 
