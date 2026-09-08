@@ -3,6 +3,7 @@ import {
   getEffectiveCookieStoreId,
   normalizeHostRule,
 } from "../domain/hosts.js";
+import { mergeRequestHeadersWithCompiledPlan } from "../domain/headers.js";
 
 export function createRequestHandlers(deps) {
     const {
@@ -196,7 +197,7 @@ export function createRequestHandlers(deps) {
       }
 
       return {
-        requestHeaders: Shared.mergeRequestHeadersWithCompiledPlan(
+        requestHeaders: mergeRequestHeadersWithCompiledPlan(
           requestDetails.requestHeaders,
           plan,
         ),
