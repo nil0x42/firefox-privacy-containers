@@ -2068,24 +2068,6 @@ import {
     return createConfigBundle(value, {});
   }
 
-  async function loadConfigBundle() {
-    const storage = await browser.storage.local.get(CONFIG_KEY);
-    const storedConfig = storage[CONFIG_KEY];
-
-    if (!storedConfig) {
-      return createConfigBundle(createDefaultConfig(), {
-        revision: 0,
-      });
-    }
-
-    return normalizeConfigBundle(storedConfig);
-  }
-
-  async function loadConfig() {
-    const bundle = await loadConfigBundle();
-    return bundle.config;
-  }
-
   const api = {
     BLOCKED_REOPEN_PREFIXES,
     CONFIG_KEY,
@@ -2182,8 +2164,6 @@ import {
     isSocksProxyType,
     isSupportedPwnFoxColor,
     isUsableProxy,
-    loadConfigBundle,
-    loadConfig,
     mergeRequestHeadersWithCompiledPlan,
     mergeRequestHeaders,
     normalizeConfig,

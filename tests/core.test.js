@@ -27,9 +27,14 @@ async function withMockBrowser(mock, task) {
     mock.runtime = {};
   }
   if (mock.storage && typeof mock.runtime?.sendMessage !== "function") {
+    const configService = createConfigService({
+      Shared,
+      browser: mock,
+      writerId: "test",
+    });
     mock.runtime.sendMessage = async (message) => {
       if (message?.type === "config:get") {
-        return { ok: true, bundle: await Shared.loadConfigBundle() };
+        return { ok: true, bundle: await configService.getBundle() };
       }
       throw new Error(`Unexpected runtime message: ${message?.type || "unknown"}`);
     };
@@ -241,64 +246,6 @@ test("refuses future and malformed stored configuration schemas", () => {
   });
 });
 
-test("loads defaults and migrations without writing during reads", async () => {
-  const emptyStorage = createLocalStorageMock();
-  let emptyWrites = 0;
-  const emptySet = emptyStorage.set;
-  emptyStorage.set = async function set(entries) {
-    emptyWrites += 1;
-    return emptySet.call(this, entries);
-  };
-  const defaults = await withMockBrowser(
-    { storage: { local: emptyStorage } },
-    () => Shared.loadConfigBundle(),
-  );
-  assert.strictEqual(defaults.meta.revision, 0);
-  assert.strictEqual(emptyWrites, 0);
-
-  const legacyStorage = createLocalStorageMock({
-    [Shared.CONFIG_KEY]: {
-      proxies: [
-        { id: "proxy-1", type: "http", host: "127.0.0.1", port: 8080 },
-      ],
-    },
-  });
-  let legacyWrites = 0;
-  const legacySet = legacyStorage.set;
-  legacyStorage.set = async function set(entries) {
-    legacyWrites += 1;
-    return legacySet.call(this, entries);
-  };
-  const migrated = await withMockBrowser(
-    { storage: { local: legacyStorage } },
-    () => Shared.loadConfigBundle(),
-  );
-  assert.strictEqual(migrated.meta.schemaVersion, Shared.CONFIG_SCHEMA_VERSION);
-  assert.strictEqual(migrated.config.proxies[0].id, "proxy-1");
-  assert.strictEqual(legacyWrites, 0);
-});
-
-test("does not overwrite a future stored configuration", async () => {
-  const future = {
-    meta: { schemaVersion: Shared.CONFIG_SCHEMA_VERSION + 1, revision: 9 },
-    config: Shared.createDefaultConfig(),
-  };
-  const storage = createLocalStorageMock({ [Shared.CONFIG_KEY]: future });
-  let writes = 0;
-  storage.set = async () => {
-    writes += 1;
-  };
-
-  await assert.rejects(
-    withMockBrowser(
-      { storage: { local: storage } },
-      () => Shared.loadConfigBundle(),
-    ),
-    (error) => error.code === "CONFIG_VERSION_UNSUPPORTED",
-  );
-  assert.strictEqual(writes, 0);
-  assert.strictEqual(storage.values[Shared.CONFIG_KEY], future);
-});
 
 test("serializes configuration writes and rejects stale revisions", async () => {
   const storage = createLocalStorageMock();
