@@ -10,14 +10,14 @@
     "benchmark": "node dev/benchmark.js",
     "check": "npm run lint && npm run coverage && npm run package:check",
     "coverage": "npm run coverage:core && npm run coverage:options",
-    "coverage:core": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=79 --test-coverage-functions=84 --test-coverage-include='background/*.js' --test-coverage-include='domain/*.js' --test-coverage-include='popup/*.js' --test-coverage-include='ui/*.js' --test-coverage-include='utils/*.js' tests/*.test.js tests/run-tests.js",
-    "coverage:options": "node --test --experimental-test-coverage --test-coverage-lines=20 --test-coverage-branches=74 --test-coverage-functions=38 --test-coverage-include='options/*.js' tests/*.test.js tests/run-tests.js",
+    "coverage:core": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=79 --test-coverage-functions=84 --test-coverage-include='background/*.js' --test-coverage-include='domain/*.js' --test-coverage-include='popup/*.js' --test-coverage-include='ui/*.js' --test-coverage-include='utils/*.js' tests/*.test.js",
+    "coverage:options": "node --test --experimental-test-coverage --test-coverage-lines=20 --test-coverage-branches=74 --test-coverage-functions=38 --test-coverage-include='options/*.js' tests/*.test.js",
     "lint": "npm run lint:js && npm run lint:addon",
     "lint:addon": "web-ext lint --source-dir . --ignore-files '*.md' package.json package-lock.json eslint.config.js 'tests/**' 'dev/**' '.github/**' 'dist/**'",
     "lint:js": "eslint .",
     "package": "bash dev/package-addon.sh",
     "package:check": "bash dev/check-package.sh",
-    "test": "node --test tests/*.test.js tests/run-tests.js"
+    "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
     "eslint": "^10.10.0",
