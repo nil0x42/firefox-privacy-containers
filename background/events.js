@@ -15,13 +15,25 @@ export function createEventBinder(deps) {
     } = deps;
     let eventsBound = false;
 
+    function runWhenReady(operation) {
+      return lifecycle.initialize().then(operation);
+    }
+
+    function runEventWhenReady(label, operation) {
+      return runWhenReady(operation).catch((error) => {
+        console.error(label, error);
+      });
+    }
+
     function handleRuntimeMessage(message, sender) {
       if (!message || typeof message.type !== "string") {
         return undefined;
       }
 
       if (message.type === "containers-changed") {
-        return lifecycle.handleContainersChangedMessage();
+        return runWhenReady(() =>
+          lifecycle.handleContainersChangedMessage(),
+        ).catch(() => ({ ok: false }));
       }
 
       if (message.type === "config:get") {
@@ -32,21 +44,27 @@ export function createEventBinder(deps) {
       }
 
       if (message.type === "config:save") {
-        return configService.save(message.expectedRevision, message.config).then(
+        return runWhenReady(() =>
+          configService.save(message.expectedRevision, message.config),
+        ).then(
           (bundle) => ({ ok: true, bundle }),
           (error) => ({ ok: false, error: serializeConfigError(error) }),
         );
       }
 
       if (message.type === "get-blocked-page-context") {
-        return blockedPageStore.getBlockedPageContextPayload(message).then((context) => ({
+        return runWhenReady(() =>
+          blockedPageStore.getBlockedPageContextPayload(message),
+        ).then((context) => ({
           ok: true,
           context,
         }));
       }
 
       if (message.type === "open-blocked-url-in-container") {
-        return blockedPageStore.openBlockedUrlInContainer(message, sender);
+        return runWhenReady(() =>
+          blockedPageStore.openBlockedUrlInContainer(message, sender),
+        );
       }
 
       return undefined;
@@ -77,24 +95,24 @@ export function createEventBinder(deps) {
       );
 
       browser.contextualIdentities.onCreated.addListener((change) => {
-        lifecycle.handleContainerCreated(change.contextualIdentity).catch(() => undefined);
+        return runEventWhenReady("Failed to register created container", () =>
+          lifecycle.handleContainerCreated(change.contextualIdentity),
+        );
       });
 
       browser.contextualIdentities.onRemoved.addListener((change) => {
-        lifecycle.handleContainerRemoved(
-          change.contextualIdentity.cookieStoreId,
-        ).catch((error) => {
-          console.error("Failed to clean up removed container", error);
-        });
+        return runEventWhenReady("Failed to clean up removed container", () =>
+          lifecycle.handleContainerRemoved(
+            change.contextualIdentity.cookieStoreId,
+          ),
+        );
       });
 
-      if (browser.contextualIdentities.onUpdated) {
-        browser.contextualIdentities.onUpdated.addListener((change) => {
-          lifecycle.handleContainerUpdated(change.contextualIdentity).catch(
-            () => undefined,
-          );
-        });
-      }
+      browser.contextualIdentities.onUpdated.addListener((change) => {
+        return runEventWhenReady("Failed to register updated container", () =>
+          lifecycle.handleContainerUpdated(change.contextualIdentity),
+        );
+      });
 
       browser.runtime.onMessage.addListener(handleRuntimeMessage);
 
@@ -118,29 +136,39 @@ export function createEventBinder(deps) {
       });
 
       browser.commands.onCommand.addListener((commandName) => {
-        shortcuts.handleCommand(commandName).catch((error) => {
-          console.error("Command failed", commandName, error);
-          showCommandFailureNotification(browser, error).catch(() => undefined);
-        });
+        return runWhenReady(() => shortcuts.handleCommand(commandName)).catch(
+          (error) => {
+            console.error("Command failed", commandName, error);
+            showCommandFailureNotification(browser, error).catch(() => undefined);
+          },
+        );
       });
 
       browser.tabs.onActivated.addListener((activeInfo) => {
-        badges.updateBadgeForTab(activeInfo.tabId);
+        return runEventWhenReady("Failed to update activated tab badge", () =>
+          badges.updateBadgeForTab(activeInfo.tabId),
+        );
       });
 
       browser.tabs.onCreated.addListener((tab) => {
-        if (typeof tab.id === "number") {
-          tabIndex.trackTab(tab);
-          badges.updateBadgeForTab(tab.id, tab);
-        }
+        return runEventWhenReady("Failed to register created tab", async () => {
+          if (typeof tab.id === "number") {
+            tabIndex.trackTab(tab);
+            await badges.updateBadgeForTab(tab.id, tab);
+          }
+        });
       });
 
       browser.tabs.onRemoved.addListener((tabId) => {
-        blockedPageStore.removeBlockedPageEntriesForTab(tabId).catch((error) => {
-          console.error("Failed to remove blocked navigation contexts", error);
+        return runEventWhenReady("Failed to register removed tab", async () => {
+          await blockedPageStore.removeBlockedPageEntriesForTab(tabId).catch(
+            (error) => {
+              console.error("Failed to remove blocked navigation contexts", error);
+            },
+          );
+          tabIndex.untrackTab(tabId);
+          state.badgeTextByTabId.delete(tabId);
         });
-        tabIndex.untrackTab(tabId);
-        state.badgeTextByTabId.delete(tabId);
       });
     }
 

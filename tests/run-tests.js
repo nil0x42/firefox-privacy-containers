@@ -3584,9 +3584,7 @@ function loadBackgroundModule() {
     runtime: {
       getURL: (targetPath) => `moz-extension://test/${targetPath}`,
       onInstalled: createEventTarget(),
-      onMessage: {
-        addListener() {},
-      },
+      onMessage: createEventTarget(),
       onStartup: createEventTarget(),
     },
     storage: {
@@ -3597,21 +3595,13 @@ function loadBackgroundModule() {
       session: createStorageArea(storageSessionState),
     },
     contextualIdentities: {
-      onCreated: {
-        addListener() {},
-      },
-      onRemoved: {
-        addListener() {},
-      },
-      onUpdated: {
-        addListener() {},
-      },
+      onCreated: createEventTarget(),
+      onRemoved: createEventTarget(),
+      onUpdated: createEventTarget(),
       query: async () => [],
     },
     commands: {
-      onCommand: {
-        addListener() {},
-      },
+      onCommand: createEventTarget(),
       async getAll() {
         return [];
       },
@@ -3634,15 +3624,9 @@ function loadBackgroundModule() {
       async remove(tabId) {
         this.removed.push(tabId);
       },
-      onActivated: {
-        addListener() {},
-      },
-      onCreated: {
-        addListener() {},
-      },
-      onRemoved: {
-        addListener() {},
-      },
+      onActivated: createEventTarget(),
+      onCreated: createEventTarget(),
+      onRemoved: createEventTarget(),
       query: async function query() {
         this.queried += 1;
         return [];
@@ -3748,6 +3732,63 @@ test("initializes once and reconciles browser-owned state on startup", async () 
     await startupListener();
 
     assert.strictEqual(ctx.browserMock.tabs.queried, 1);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("waits for background initialization before handling commands", async () => {
+  const ctx = loadBackgroundModule();
+  let releaseContainers;
+  const containersReady = new Promise((resolve) => {
+    releaseContainers = resolve;
+  });
+
+  ctx.browserMock.contextualIdentities.query = async () => {
+    await containersReady;
+    return [
+      {
+        cookieStoreId: "firefox-container-1",
+        name: "Work",
+        color: "blue",
+        icon: "briefcase",
+      },
+    ];
+  };
+  ctx.browserMock.tabs.query = async function query() {
+    this.queried += 1;
+    return [
+      {
+        id: 7,
+        active: true,
+        cookieStoreId: Shared.FIREFOX_DEFAULT_CONTAINER,
+        index: 0,
+        pinned: false,
+        url: "https://example.com/",
+        windowId: 1,
+      },
+    ];
+  };
+
+  try {
+    ctx.background.bindBrowserEvents();
+    const commandListener =
+      ctx.browserMock.commands.onCommand.listeners[0].listener;
+    const pendingCommand = commandListener(
+      Shared.getOpenContainerSlotCommandName(1),
+    );
+
+    await Promise.resolve();
+    assert.deepStrictEqual(ctx.browserMock.tabs.created, []);
+
+    releaseContainers();
+    await pendingCommand;
+
+    assert.strictEqual(ctx.browserMock.tabs.created.length, 1);
+    assert.strictEqual(
+      ctx.browserMock.tabs.created[0].cookieStoreId,
+      "firefox-container-1",
+    );
   } finally {
     ctx.cleanup();
   }
