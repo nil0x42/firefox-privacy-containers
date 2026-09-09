@@ -875,6 +875,32 @@ import {
     return proxy.title || `${proxy.type}://${proxy.host}:${proxy.port}`;
   }
 
+  function getProxyTypeLabel(type) {
+    switch (type) {
+      case "http":
+        return "HTTP";
+      case "https":
+        return "HTTPS";
+      case "socks":
+        return "SOCKS5";
+      case "socks4":
+        return "SOCKS4";
+      case "socks4a":
+        return "SOCKS4a";
+      default:
+        return "Proxy";
+    }
+  }
+
+  function getProxyEndpointLabel(proxy) {
+    if (!proxy) {
+      return "";
+    }
+
+    const protocol = proxy.type === "socks" ? "socks5" : proxy.type;
+    return `${protocol}://${proxy.host}:${proxy.port}`;
+  }
+
   function compileHostPattern(pattern) {
     const normalizedPattern = normalizeHostPattern(pattern);
     if (!normalizedPattern) {
@@ -1394,6 +1420,55 @@ import {
     return proxyRuntime;
   }
 
+  function resolveCompiledProxyRoute(proxyRuntime, context) {
+    if (!proxyRuntime || !context || !context.cookieStoreId) {
+      return { kind: "blocked", context, reason: "missing-container" };
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        proxyRuntime.invalidAssignmentByContainerId,
+        context.cookieStoreId,
+      )
+    ) {
+      return { kind: "blocked", context, reason: "invalid-proxy" };
+    }
+
+    const plan = proxyRuntime.planByContainerId[context.cookieStoreId];
+    if (!plan) {
+      return { kind: "direct", context, reason: "unassigned" };
+    }
+
+    if (!plan.requiresRequestTarget) {
+      return { kind: "proxy", context, plan, reason: "" };
+    }
+
+    ensureRequestTarget(context);
+    if (!context.target) {
+      return { kind: "blocked", context, reason: "invalid-target" };
+    }
+
+    if (
+      plan.bypassMatcher.matchesNormalizedHost(
+        context.method,
+        context.normalizedHost,
+      )
+    ) {
+      return {
+        kind: "direct",
+        context,
+        plan,
+        reason: context.method === "OPTIONS" ? "options-method" : "custom-host",
+      };
+    }
+
+    if (plan.doNotProxyLocal && context.isLoopback) {
+      return { kind: "direct", context, plan, reason: "local-host" };
+    }
+
+    return { kind: "proxy", context, plan, reason: "" };
+  }
+
   function compileHeaderRuntime(config, containers, options) {
     const normalized =
       options && options.normalizedConfig ? options.normalizedConfig : normalizeConfig(config);
@@ -1778,12 +1853,15 @@ import {
     getProxyById,
     getProxyBypass,
     getProxyDisplayName,
+    getProxyEndpointLabel,
     getProxyTypeForDNSChoice,
+    getProxyTypeLabel,
     getProxyTypePolicy,
     getProxyStatus,
     getPwnFoxColorValue,
     getReopenContainerSlotCommandName,
     resolveProxyAssignment,
+    resolveCompiledProxyRoute,
     getShortcutActivationIssue,
     getSlotNumberFromCommandName,
     headersToMultilineText,

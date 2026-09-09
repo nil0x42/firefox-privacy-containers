@@ -30,7 +30,11 @@ https://addons.mozilla.org/addon/privacy-containers/
 
 ## Useful tools in the popup
 
-The toolbar popup can also fix common page annoyances without opening DevTools:
+The toolbar popup shows the current container, main-page route, matching Host
+Rule, cookies, and effective headers. Linked names open the corresponding
+configuration card in a background tab.
+
+It can also fix common page annoyances without opening DevTools:
 
 - bypass blocked paste and text selection;
 - re-enable disabled form fields;

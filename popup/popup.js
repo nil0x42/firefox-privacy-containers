@@ -1,4 +1,8 @@
 import { getActionableTabValidation } from "../domain/tabs.js";
+import * as Container from "../domain/containers.js";
+import * as OptionsUi from "../domain/ui-state.js";
+import Shared from "../utils/shared.js";
+import { getConfigBundle } from "../options/config-client.js";
 import * as CookieActions from "./cookies.js";
 import { setSvgIcon as setIcon } from "../ui/icons.js";
 
@@ -9,6 +13,7 @@ const ERASER_ICON_SVG =
 
 const state = {
   actionNodesById: new Map(),
+  context: null,
   isBusy: false,
   tab: null,
 };
@@ -66,6 +71,7 @@ const TAB_ACTIONS = [
   },
   {
     id: "clear-cookies",
+    affectsCookies: true,
     kind: "clear",
     label: "Clear cookies",
     description: "Delete cookies for the active page in its container store.",
@@ -76,6 +82,7 @@ const TAB_ACTIONS = [
   },
   {
     id: "clear-all",
+    affectsCookies: true,
     kind: "clear",
     label: "Clear local/session storage + cookies",
     description: "Delete local storage, session storage and cookies together.",
@@ -233,6 +240,317 @@ function renderTarget() {
   meta.textContent = getTargetLabel(state.tab);
 }
 
+function createOptionsLink(label, tabId, targetId, className = "") {
+  const link = document.createElement("a");
+  link.className = className ? `context-link ${className}` : "context-link";
+  link.href = OptionsUi.buildOptionsTargetUrl(browser, tabId, targetId);
+  link.textContent = label;
+
+  const openInBackground = (event) => {
+    const isPrimaryClick = event.type === "click" && event.button === 0;
+    const isMiddleClick = event.type === "auxclick" && event.button === 1;
+    if (!isPrimaryClick && !isMiddleClick) {
+      return;
+    }
+
+    event.preventDefault();
+    browser.tabs.create({ active: false, url: link.href }).catch((error) => {
+      showStatus(error.message || "Failed to open configuration.", true);
+    });
+  };
+
+  link.onclick = openInBackground;
+  link.onauxclick = openInBackground;
+  return link;
+}
+
+function createContainerLink(container) {
+  const link = createOptionsLink(
+    container.name,
+    "containers",
+    container.cookieStoreId,
+    "container-link",
+  );
+  const marker = document.createElement("span");
+  marker.className = "container-marker";
+  marker.setAttribute("aria-hidden", "true");
+  if (container.iconUrl) {
+    const image = document.createElement("img");
+    image.src = container.iconUrl;
+    image.alt = "";
+    marker.appendChild(image);
+  } else {
+    marker.classList.add("is-dot");
+  }
+  if (container.color && container.color !== "toolbar") {
+    marker.style.setProperty("--container-color", container.color);
+  }
+  link.prepend(marker);
+  return link;
+}
+
+function createContextRow(label, content, detail = "") {
+  const row = document.createElement("div");
+  row.className = "context-row";
+
+  const labelNode = document.createElement("span");
+  labelNode.className = "context-label";
+  labelNode.textContent = label;
+
+  const value = document.createElement("div");
+  value.className = "context-value";
+  if (content && typeof content === "object" && content.nodeType) {
+    value.appendChild(content);
+  } else {
+    value.textContent = String(content || "");
+  }
+
+  if (detail) {
+    const detailNode = document.createElement("span");
+    detailNode.className = "context-detail";
+    detailNode.textContent = detail;
+    value.appendChild(detailNode);
+  }
+
+  row.append(labelNode, value);
+  return row;
+}
+
+function getProxyDetail(proxy) {
+  if (!proxy) {
+    return "";
+  }
+
+  const parts = [Shared.getProxyTypeLabel(proxy.type)];
+  if (proxy.host && proxy.port) {
+    parts.push(`${proxy.host}:${proxy.port}`);
+  }
+  return parts.join(" · ");
+}
+
+function createRouteContent(context) {
+  const content = document.createElement("span");
+  content.className = `route-value is-${context.route.kind}`;
+  const { assignment, route } = context;
+
+  if (assignment.status === "invalid-reference") {
+    content.append("Blocked — ");
+    if (assignment.proxy) {
+      content.appendChild(
+        createOptionsLink(
+          assignment.displayName,
+          "proxies",
+          assignment.proxyId,
+        ),
+      );
+    } else {
+      content.append("missing proxy");
+    }
+    return content;
+  }
+
+  if (route.kind === "proxy" && assignment.proxy) {
+    return createOptionsLink(
+      assignment.displayName,
+      "proxies",
+      assignment.proxyId,
+    );
+  }
+
+  if (route.kind === "direct" && route.plan && assignment.proxy) {
+    const reason = route.reason === "local-host" ? "local bypass" : "host bypass";
+    content.append(`Direct — ${reason} via `);
+    content.appendChild(
+      createOptionsLink(
+        assignment.displayName,
+        "proxies",
+        assignment.proxyId,
+      ),
+    );
+    return content;
+  }
+
+  content.textContent = route.kind === "blocked" ? "Blocked" : "Direct";
+  return content;
+}
+
+function createHeadersDetails(headerPlan) {
+  const details = document.createElement("details");
+  details.className = "context-headers";
+
+  const summary = document.createElement("summary");
+  summary.textContent = `Headers · ${headerPlan.headerCount}`;
+  details.appendChild(summary);
+
+  const list = document.createElement("div");
+  list.className = "context-header-list";
+  headerPlan.headers.forEach((header) => {
+    const entry = document.createElement("div");
+    entry.className = "context-header-entry";
+    const name = document.createElement("span");
+    name.className = "context-header-name";
+    name.textContent = `${header.name}:`;
+    const value = document.createElement("span");
+    value.className = "context-header-value";
+    value.textContent = header.value;
+    entry.append(name, value);
+    list.appendChild(entry);
+  });
+  details.appendChild(list);
+  return details;
+}
+
+function renderTabContext() {
+  const root = document.getElementById("tab-context");
+  root.textContent = "";
+
+  if (!state.tab || !state.context) {
+    root.hidden = true;
+    return;
+  }
+
+  const context = state.context;
+  const containerContent = context.container.exists
+    ? createContainerLink(context.container)
+    : context.container.name;
+  root.appendChild(createContextRow("Container", containerContent));
+
+  if (context.assignment && context.route) {
+    const routeDetail = context.assignment.status === "invalid-reference"
+      ? context.assignment.reason
+      : getProxyDetail(context.assignment.proxy);
+    const routeRow = createContextRow(
+      "Route",
+      createRouteContent(context),
+      routeDetail,
+    );
+    routeRow.title =
+      "Estimated for the current main URL as a GET request. Subrequests may use another route.";
+    root.appendChild(routeRow);
+  } else {
+    root.appendChild(createContextRow("Route", "Unavailable"));
+  }
+
+  if (context.hostDecision) {
+    const ruleName = context.hostDecision.ruleName || "Unnamed Host Rule";
+    const hostRule = document.createElement("span");
+    hostRule.className = "host-rule-value";
+    hostRule.appendChild(
+      createOptionsLink(ruleName, "host-rules", context.hostDecision.ruleId),
+    );
+    const decision = document.createElement("span");
+    decision.className = `decision is-${context.hostDecision.decision}`;
+    decision.textContent = context.hostDecision.decision === "block"
+      ? "Blocked"
+      : "Allowed";
+    hostRule.appendChild(decision);
+    root.appendChild(createContextRow("Host Rule", hostRule));
+  }
+
+  root.appendChild(
+    createContextRow(
+      "Cookies",
+      Number.isInteger(context.cookieCount)
+        ? String(context.cookieCount)
+        : "Unavailable",
+    ),
+  );
+
+  if (context.headerPlan) {
+    root.appendChild(createHeadersDetails(context.headerPlan));
+  }
+
+  root.hidden = false;
+}
+
+function getCurrentContainer(containers, cookieStoreId, identitiesAvailable) {
+  const container = Container.getContainerSlots(containers).find(
+    (entry) => entry.cookieStoreId === cookieStoreId,
+  );
+  if (container) {
+    return { ...container, exists: true };
+  }
+
+  return {
+    cookieStoreId,
+    exists: !identitiesAvailable,
+    name: identitiesAvailable
+      ? `Missing container (${Shared.getContainerTechnicalLabel(cookieStoreId)})`
+      : Shared.getContainerTechnicalLabel(cookieStoreId) || "Unavailable",
+  };
+}
+
+async function loadTabContext() {
+  if (!state.tab) {
+    state.context = null;
+    renderTabContext();
+    return;
+  }
+
+  const [bundleResult, containersResult, cookiesResult] = await Promise.allSettled([
+    Promise.resolve().then(() => getConfigBundle()),
+    Promise.resolve().then(() => browser.contextualIdentities.query({})),
+    Promise.resolve().then(() => CookieActions.getTabCookies(browser, state.tab)),
+  ]);
+  const containers = containersResult.status === "fulfilled"
+    ? containersResult.value
+    : [];
+  const cookieStoreId = Shared.getEffectiveCookieStoreId(state.tab.cookieStoreId);
+  const context = {
+    assignment: null,
+    container: getCurrentContainer(
+      containers,
+      cookieStoreId,
+      containersResult.status === "fulfilled",
+    ),
+    cookieCount: cookiesResult.status === "fulfilled"
+      ? cookiesResult.value.length
+      : null,
+    cookieStoreId,
+    headerPlan: null,
+    hostDecision: null,
+    route: null,
+  };
+
+  if (bundleResult.status === "fulfilled") {
+    const config = bundleResult.value.config;
+    const runtime = Shared.compileRuntime(config, containers);
+    const requestContext = Shared.buildRequestContext({
+      cookieStoreId,
+      method: "GET",
+      url: state.tab.url,
+    });
+    context.assignment = Shared.resolveProxyAssignment(config, cookieStoreId);
+    context.route = Shared.resolveCompiledProxyRoute(
+      runtime.proxyRuntime,
+      requestContext,
+    );
+    context.hostDecision = Shared.getHostRuleDecisionForNormalizedHost(
+      runtime.hostRuleRuntime,
+      context.route.context.normalizedHost || getHostname(state.tab.url),
+      cookieStoreId,
+    );
+    context.headerPlan = runtime.headerRuntime.planByContainerId[cookieStoreId] || null;
+  }
+
+  state.context = context;
+  renderTabContext();
+}
+
+async function refreshCookieCount() {
+  if (!state.tab || !state.context) {
+    return;
+  }
+
+  try {
+    const cookies = await CookieActions.getTabCookies(browser, state.tab);
+    state.context.cookieCount = cookies.length;
+  } catch (_) {
+    state.context.cookieCount = null;
+  }
+  renderTabContext();
+}
+
 async function runAction(action) {
   if (!state.tab || state.isBusy) {
     return;
@@ -253,6 +571,9 @@ async function runAction(action) {
       : "Action failed on this tab.";
     showStatus(message, true);
   } finally {
+    if (action.affectsCookies) {
+      await refreshCookieCount();
+    }
     state.isBusy = false;
     syncActionAvailability();
   }
@@ -316,6 +637,7 @@ async function main() {
   state.tab = await getActiveBrowserTab();
   renderTarget();
   renderActions();
+  await loadTabContext();
 }
 
 if (typeof document !== "undefined") {

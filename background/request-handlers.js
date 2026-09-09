@@ -19,10 +19,6 @@ export function createRequestHandlers(deps) {
     const ROUTE_PROXY = "proxy";
     const ROUTE_BLOCKED = "blocked";
 
-    function createDirectRoute(context) {
-      return { kind: ROUTE_DIRECT, context };
-    }
-
     function createBlockedRoute(context) {
       return { kind: ROUTE_BLOCKED, context };
     }
@@ -57,43 +53,7 @@ export function createRequestHandlers(deps) {
         cookieStoreId === cachedContext.cookieStoreId
           ? cachedContext
           : { ...cachedContext, cookieStoreId };
-      const proxyRuntime = runtime.proxyRuntime;
-      if (
-        Object.prototype.hasOwnProperty.call(
-          proxyRuntime.invalidAssignmentByContainerId,
-          context.cookieStoreId,
-        )
-      ) {
-        return createBlockedRoute(context);
-      }
-      const plan = proxyRuntime.planByContainerId[context.cookieStoreId];
-      if (!plan) {
-        return createDirectRoute(context);
-      }
-
-      if (!plan.requiresRequestTarget) {
-        return { kind: ROUTE_PROXY, context, plan };
-      }
-
-      ensureRequestTarget(context);
-      if (!context.target) {
-        return createBlockedRoute(context);
-      }
-
-      if (
-        plan.bypassMatcher.matchesNormalizedHost(
-          context.method,
-          context.normalizedHost,
-        )
-      ) {
-        return createDirectRoute(context);
-      }
-
-      if (plan.doNotProxyLocal && context.isLoopback) {
-        return createDirectRoute(context);
-      }
-
-      return { kind: ROUTE_PROXY, context, plan };
+      return Shared.resolveCompiledProxyRoute(runtime.proxyRuntime, context);
     }
 
     function safelyResolveProxyRoute(requestDetails, runtime = state.runtime) {

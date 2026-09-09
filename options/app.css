@@ -632,6 +632,14 @@ main {
   }
 }
 
+.editor-card.is-navigation-target {
+  border-color: var(--focus-ring);
+  box-shadow:
+    inset 4px 0 0 var(--context-accent-strong),
+    0 0 0 4px var(--focus-ring-soft),
+    0 20px 40px var(--context-shadow);
+}
+
 .proxy-inline-field-label > span:first-child {
   white-space: nowrap;
 }
@@ -1220,6 +1228,26 @@ main {
   box-shadow: inset 3px 0 0 var(--tag-accent);
 }
 
+.host-rule-tag-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  min-width: 0;
+  border-radius: 999px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.host-rule-tag-link:hover .host-rule-tag-text {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+.host-rule-tag-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .host-rule-tag-icon {
   width: 1rem;
   height: 1rem;
@@ -1238,6 +1266,8 @@ main {
 }
 
 .host-rule-tag-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 0.78rem;
   font-weight: 700;
 }

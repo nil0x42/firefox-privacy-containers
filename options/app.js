@@ -106,10 +106,17 @@ const CARD_COLLECTIONS = Object.freeze({
     datasetKey: "hostRuleId",
   }),
 });
+const CARD_COLLECTION_BY_TAB_ID = Object.freeze({
+  containers: "containers",
+  proxies: "proxies",
+  "host-rules": "hostRules",
+});
 
 const state = createOptionsState();
 
 let containerIdentityPopoverFrame = 0;
+let navigationHighlightTimer = 0;
+let pendingNavigationHighlight = null;
 let stickyHeaderMeasureFrame = 0;
 const CARD_TITLE_MIN_WIDTH = 112;
 const CONTAINER_PROXY_PREFIX_LABEL = "Proxy";
@@ -356,6 +363,108 @@ function revealElementBelowStickyHeader(target, behavior = "smooth") {
     behavior,
   });
   return true;
+}
+
+function getOptionsTargetUrl(tabId, targetId = "") {
+  return OptionsUi.buildOptionsTargetUrl(browser, tabId, targetId);
+}
+
+function setOptionsLocation(tabId, targetId = "", method = "pushState") {
+  const hash = OptionsUi.buildOptionsTargetHash(tabId, targetId);
+  window.history[method](null, "", hash);
+}
+
+function getOptionsTargetCard({ tabId, targetId }) {
+  const collection = CARD_COLLECTION_BY_TAB_ID[tabId];
+  const definition = CARD_COLLECTIONS[collection];
+
+  return Array.from(document.querySelectorAll(definition.selector)).find(
+    (card) => card.dataset[definition.datasetKey] === targetId,
+  ) || null;
+}
+
+function clearNavigationHighlight() {
+  window.clearTimeout(navigationHighlightTimer);
+  navigationHighlightTimer = 0;
+  document.querySelectorAll(".is-navigation-target").forEach((element) => {
+    element.classList.remove("is-navigation-target");
+  });
+}
+
+function getNavigationScrollBehavior() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+}
+
+function showNavigationHighlight(target) {
+  const card = getOptionsTargetCard(target);
+  if (!card) {
+    return false;
+  }
+
+  pendingNavigationHighlight = null;
+  clearNavigationHighlight();
+  revealElementBelowStickyHeader(card, getNavigationScrollBehavior());
+  card.classList.add("is-navigation-target");
+  navigationHighlightTimer = window.setTimeout(() => {
+    card.classList.remove("is-navigation-target");
+    navigationHighlightTimer = 0;
+  }, 2400);
+  return true;
+}
+
+async function revealOptionsTarget(target) {
+  if (!target || !target.targetId) {
+    pendingNavigationHighlight = null;
+    clearNavigationHighlight();
+    return true;
+  }
+
+  await nextAnimationFrame();
+  const card = getOptionsTargetCard(target);
+  if (!card) {
+    pendingNavigationHighlight = null;
+    clearNavigationHighlight();
+    setStatus("The requested configuration item no longer exists.", true);
+    return false;
+  }
+
+  revealElementBelowStickyHeader(
+    card,
+    document.hidden ? "auto" : getNavigationScrollBehavior(),
+  );
+  if (document.hidden) {
+    pendingNavigationHighlight = target;
+    return true;
+  }
+
+  return showNavigationHighlight(target);
+}
+
+async function navigateToOptionsTarget(target, updateLocation = false) {
+  closeContainerIdentityPopover();
+  state.activeTab = target.tabId;
+  if (updateLocation) {
+    setOptionsLocation(target.tabId, target.targetId);
+  }
+  await OptionsUi.saveOptionsUi(browser, state);
+  renderShell();
+  await renderActiveTabContent();
+  await revealOptionsTarget(target);
+}
+
+function bindOptionsReferenceLink(link, target) {
+  link.onclick = (event) => {
+    if (!OptionsUi.shouldHandleOptionsLinkClick(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    navigateToOptionsTarget(target, true).catch((error) => {
+      setStatus(error.message, true);
+    });
+  };
 }
 
 function keepElementClearOfStickyHeader(target) {
@@ -692,38 +801,12 @@ function createPasswordField(value, placeholder) {
   };
 }
 
-function getProxyTypeLabel(type) {
-  switch (type) {
-    case "http":
-      return "HTTP";
-    case "https":
-      return "HTTPS";
-    case "socks":
-      return "SOCKS5";
-    case "socks4":
-      return "SOCKS4";
-    case "socks4a":
-      return "SOCKS4a";
-    default:
-      return "Proxy";
-  }
-}
-
-function getProxyEndpointLabel(proxy) {
-  if (!proxy) {
-    return "";
-  }
-
-  const protocol = proxy.type === "socks" ? "socks5" : proxy.type;
-  return `${protocol}://${proxy.host}:${proxy.port}`;
-}
-
 function createProxyPickerEntry(proxy) {
   const proxyStatus = Shared.getProxyStatus(proxy);
-  const endpoint = getProxyEndpointLabel(proxy);
+  const endpoint = Shared.getProxyEndpointLabel(proxy);
   const fallbackTitle = proxyStatus.isActivable
     ? endpoint
-    : proxy.title || `${getProxyTypeLabel(proxy.type)} draft`;
+    : proxy.title || `${Shared.getProxyTypeLabel(proxy.type)} draft`;
 
   return {
     proxyId: proxy.id,
@@ -731,7 +814,7 @@ function createProxyPickerEntry(proxy) {
     detail: proxyStatus.isActivable
       ? proxy.title
         ? endpoint
-        : `${getProxyTypeLabel(proxy.type)} proxy`
+        : `${Shared.getProxyTypeLabel(proxy.type)} proxy`
       : proxyStatus.reason,
     kind: proxyStatus.isActivable ? "proxy" : "draft",
     selectable: proxyStatus.isActivable,
@@ -1504,6 +1587,7 @@ function createContainerReferenceTag({
   removeLabel,
   onRemove,
   className,
+  href,
 }) {
   const tag = document.createElement("span");
   tag.className = missing ? "host-rule-tag missing" : "host-rule-tag";
@@ -1517,6 +1601,18 @@ function createContainerReferenceTag({
     tag.style.removeProperty("--tag-accent");
   }
 
+  let content = tag;
+  if (href && !missing) {
+    content = document.createElement("a");
+    content.className = "host-rule-tag-link";
+    content.href = href;
+    bindOptionsReferenceLink(content, {
+      tabId: "containers",
+      targetId: cookieStoreId,
+    });
+    tag.appendChild(content);
+  }
+
   if (iconUrl || icon) {
     const badge = document.createElement("span");
     badge.className = "host-rule-tag-icon host-rule-tag-glyph";
@@ -1527,7 +1623,7 @@ function createContainerReferenceTag({
           ? getColorCode(color)
           : "var(--muted)";
     setIconGlyph(badge, icon, iconUrl);
-    tag.appendChild(badge);
+    content.appendChild(badge);
   }
 
   if ((ambiguous || missing) && technicalLabel) {
@@ -1537,13 +1633,13 @@ function createContainerReferenceTag({
   const text = document.createElement("span");
   text.className = "host-rule-tag-text";
   text.textContent = name;
-  tag.appendChild(text);
+  content.appendChild(text);
 
   if (ambiguous && technicalLabel) {
     const chip = document.createElement("span");
     chip.className = "host-rule-tag-flag";
     chip.textContent = `ID: ${technicalLabel}`;
-    tag.appendChild(chip);
+    content.appendChild(chip);
   }
 
   if (removable && typeof onRemove === "function") {
@@ -3715,11 +3811,9 @@ function renderTabNav() {
     copy.appendChild(meta);
     button.appendChild(copy);
     button.onclick = async () => {
-      state.activeTab = item.id;
       try {
-        await OptionsUi.saveOptionsUi(browser, state);
-        renderShell();
-        await renderActiveTabContent();
+        setOptionsLocation(item.id, "", "replaceState");
+        await navigateToOptionsTarget({ tabId: item.id, targetId: "" });
       } catch (error) {
         setStatus(error.message, true);
       }
@@ -4644,7 +4738,7 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
   const typeSelect = createSelect(
     Shared.PROXY_TYPES.map((type) => ({
       value: type,
-      label: getProxyTypeLabel(type),
+      label: Shared.getProxyTypeLabel(type),
     })),
     draft.type,
   );
@@ -4721,6 +4815,7 @@ function createProxyCard(proxy, index, totalProxies, containerIntegrity) {
           ambiguous: container.ambiguous,
           technicalLabel: container.technicalLabel,
           className: "card-top-info-tag",
+          href: getOptionsTargetUrl("containers", container.cookieStoreId),
         }),
       );
     });
@@ -5448,6 +5543,9 @@ function createHostRuleCard(
           removeException(cookieStoreId);
         },
         className: "picker-token-tag",
+        href: container
+          ? getOptionsTargetUrl("containers", cookieStoreId)
+          : "",
       });
       exceptionControl.appendChild(tag);
     });
@@ -5660,7 +5758,10 @@ function createHostRuleCard(
   };
 
   exceptionControl.onclick = (event) => {
-    if (event.target instanceof HTMLButtonElement) {
+    if (
+      event.target instanceof HTMLButtonElement ||
+      (event.target && event.target.closest && event.target.closest("a"))
+    ) {
       return;
     }
 
@@ -5880,6 +5981,9 @@ function bindEvents() {
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "hidden") {
+      if (pendingNavigationHighlight) {
+        showNavigationHighlight(pendingNavigationHighlight);
+      }
       return;
     }
 
@@ -5895,6 +5999,16 @@ function bindEvents() {
 
   window.addEventListener("scroll", scheduleContainerIdentityPopoverReposition, true);
   window.addEventListener("resize", handleWindowResize);
+  window.addEventListener("hashchange", () => {
+    const target = OptionsUi.parseOptionsTarget(window.location.hash);
+    if (!target) {
+      return;
+    }
+
+    navigateToOptionsTarget(target).catch((error) => {
+      setStatus(error.message, true);
+    });
+  });
 
   document.getElementById("dismiss-status").onclick = () => {
     if (!state.lastStatusSignature) {
@@ -5922,7 +6036,13 @@ async function main() {
   await initializeTransferMetadata();
   const recoveryMessage = await withTransferLock(recoverPendingImport);
   await refreshState();
+  const initialTarget = OptionsUi.parseOptionsTarget(window.location.hash);
+  if (initialTarget) {
+    state.activeTab = initialTarget.tabId;
+    await OptionsUi.saveOptionsUi(browser, state);
+  }
   await render();
+  await revealOptionsTarget(initialTarget);
   if (recoveryMessage) {
     setStatus(recoveryMessage, /pending|needs attention/.test(recoveryMessage));
   }
