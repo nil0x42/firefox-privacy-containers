@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "benchmark": "node dev/benchmark.js",
@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "eslint": "^10.10.0",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.1",
     "web-ext": "10.6.0"
   }
 }
