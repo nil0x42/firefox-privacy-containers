@@ -284,10 +284,22 @@
         const missing = Array.isArray(context.unavailableAllowedContainers)
           ? context.unavailableAllowedContainers
           : [];
-        unavailableNode.hidden = missing.length === 0;
-        unavailableNode.textContent = missing.length
-          ? `Unavailable right now: ${missing.map((entry) => entry.name).join(", ")}.`
-          : "";
+        const disallowed = Array.isArray(context.noLongerAllowedContainers)
+          ? context.noLongerAllowedContainers
+          : [];
+        const messages = [];
+        if (missing.length) {
+          messages.push(
+            `Unavailable right now: ${missing.map((entry) => entry.name).join(", ")}.`,
+          );
+        }
+        if (disallowed.length) {
+          messages.push(
+            `No longer allowed: ${disallowed.map((entry) => entry.name).join(", ")}.`,
+          );
+        }
+        unavailableNode.hidden = messages.length === 0;
+        unavailableNode.textContent = messages.join(" ");
       }
     }
   }

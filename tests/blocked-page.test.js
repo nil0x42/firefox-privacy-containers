@@ -115,6 +115,7 @@ test("renders a validated blocked-page context as real destination links", async
             host: "example.com",
             mode: "blacklist",
             ruleName: "Work only",
+            noLongerAllowedContainers: [{ name: "Former" }],
             unavailableAllowedContainers: [{ name: "Temporary" }],
             url: blockedUrl,
           },
@@ -148,7 +149,7 @@ test("renders a validated blocked-page context as real destination links", async
     assert.strictEqual(action.textContent, "Continue in Work");
     assert.strictEqual(
       documentValue.getElementById("blocked-unavailable").textContent,
-      "Unavailable right now: Temporary.",
+      "Unavailable right now: Temporary. No longer allowed: Former.",
     );
   } finally {
     dom.window.close();

@@ -1600,6 +1600,100 @@ test("serves blocked-page payloads from stored snapshots even after config chang
       payload.allowedContainers.map((entry) => entry.ambiguous),
       [false, false],
     );
+    assert.deepStrictEqual(payload.noLongerAllowedContainers, []);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("revalidates blocked-page actions against current Host Rules", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([
+      {
+        cookieStoreId: "firefox-container-1",
+        name: "Work",
+        color: "blue",
+        iconUrl: "work.svg",
+      },
+      {
+        cookieStoreId: "firefox-container-2",
+        name: "Admin",
+        color: "red",
+        iconUrl: "admin.svg",
+      },
+    ]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-1",
+          name: "Initial rule",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["app.example.com"],
+          exceptions: ["firefox-container-1", "firefox-container-2"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+    const redirect = await ctx.background.enforceHostRules({
+      url: "https://app.example.com/dashboard",
+      type: "main_frame",
+      cookieStoreId: "firefox-container-9",
+      tabId: 11,
+    });
+    const entryId = getBlockedEntryId(redirect.redirectUrl);
+    const initialPayload = await ctx.background.getBlockedPageContextPayload({
+      entry: entryId,
+    });
+    assert.deepStrictEqual(
+      initialPayload.allowedContainers.map((entry) => entry.name),
+      ["Work", "Admin"],
+    );
+
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-2",
+          name: "Current rule",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["app.example.com"],
+          exceptions: ["firefox-container-1"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+
+    const currentPayload = await ctx.background.getBlockedPageContextPayload({
+      entry: entryId,
+    });
+    assert.strictEqual(currentPayload.ruleName, "Initial rule");
+    assert.deepStrictEqual(
+      currentPayload.allowedContainers.map((entry) => entry.name),
+      ["Work"],
+    );
+    assert.deepStrictEqual(
+      currentPayload.noLongerAllowedContainers.map((entry) => entry.name),
+      ["Admin"],
+    );
+    await assert.rejects(
+      ctx.background.openBlockedUrlInContainer(
+        { entry: entryId, cookieStoreId: "firefox-container-2" },
+        {
+          tab: {
+            id: 11,
+            url: `moz-extension://test/blocked/blocked.html?entry=${entryId}`,
+            windowId: 4,
+            index: 2,
+            pinned: false,
+          },
+        },
+      ),
+      /no longer allowed/,
+    );
+    assert.deepStrictEqual(ctx.browserMock.tabs.created, []);
   } finally {
     ctx.cleanup();
   }
@@ -1735,6 +1829,7 @@ test("purges invalid, stale and excess blocked-page session contexts", async () 
     },
   };
   const store = createBlockedPageStore({
+    Shared,
     browser,
     constants: {
       BLOCKED_PAGE_ENTRY_TTL_MS: 1_000,
@@ -2120,6 +2215,7 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
     },
   };
   const blockedPageStore = createBlockedPageStore({
+    Shared,
     browser,
     constants: {
       BLOCKED_PAGE_ENTRY_TTL_MS: 5 * 60 * 1000,

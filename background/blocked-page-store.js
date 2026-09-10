@@ -6,6 +6,7 @@ import { isRecord, normalizeText } from "../domain/values.js";
 
 export function createBlockedPageStore(deps) {
     const {
+      Shared,
       state,
       browser,
       constants,
@@ -13,6 +14,21 @@ export function createBlockedPageStore(deps) {
       tabActions,
     } = deps;
     const pendingAutoReopenAttempts = new Set();
+
+    function isContainerCurrentlyAllowed(entry, cookieStoreId) {
+      const target = Shared.parseRequestTarget(entry && entry.url);
+      const hostRuleRuntime = state.runtime && state.runtime.hostRuleRuntime;
+      if (!target || !hostRuleRuntime) {
+        return false;
+      }
+
+      const decision = Shared.getHostRuleDecisionForNormalizedHost(
+        hostRuleRuntime,
+        target.host,
+        cookieStoreId,
+      );
+      return !decision || decision.decision !== "block";
+    }
 
     function buildAutoReopenAttemptKey(details, cookieStoreId) {
       return [
@@ -280,16 +296,20 @@ export function createBlockedPageStore(deps) {
       const ambiguousContainerIds = containerCache.getAmbiguousContainerIdSet();
       const allowedContainers = [];
       const unavailableAllowedContainers = [];
+      const noLongerAllowedContainers = [];
 
       for (let index = 0; index < entry.allowedContainers.length; index += 1) {
         const container = entry.allowedContainers[index];
         if (containerCache.isContainerAvailable(container.cookieStoreId)) {
-          allowedContainers.push(
-            containerCache.decorateContainerDescriptor(
-              container,
-              ambiguousContainerIds,
-            ),
+          const decorated = containerCache.decorateContainerDescriptor(
+            container,
+            ambiguousContainerIds,
           );
+          if (isContainerCurrentlyAllowed(entry, container.cookieStoreId)) {
+            allowedContainers.push(decorated);
+          } else {
+            noLongerAllowedContainers.push(decorated);
+          }
           continue;
         }
 
@@ -314,6 +334,7 @@ export function createBlockedPageStore(deps) {
         ),
         allowedContainers,
         unavailableAllowedContainers,
+        noLongerAllowedContainers,
       };
     }
 
@@ -459,6 +480,12 @@ export function createBlockedPageStore(deps) {
 
       if (!canReopenTabUrl(entry.url)) {
         throw new Error("The blocked URL cannot be reopened in another container.");
+      }
+
+      if (!isContainerCurrentlyAllowed(entry, cookieStoreId)) {
+        throw new Error(
+          "This container is no longer allowed for the blocked host.",
+        );
       }
 
       const createOverrides = {
