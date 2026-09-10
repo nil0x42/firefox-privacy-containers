@@ -78,6 +78,16 @@ export function createTabActions(deps) {
       };
     }
 
+    function createTabInContainerFromReferenceTab(
+      cookieStoreId,
+      referenceTab,
+      overrides,
+    ) {
+      return browser.tabs.create(
+        withContainer(buildTabCreateProperties(referenceTab, overrides), cookieStoreId),
+      );
+    }
+
     async function openTabInContainerFromReferenceTab(
       cookieStoreId,
       activeTab,
@@ -88,14 +98,51 @@ export function createTabActions(deps) {
         throw new Error(validation.reason);
       }
 
-      return browser.tabs.create(
-        withContainer(buildTabCreateProperties(activeTab, overrides), cookieStoreId),
+      return createTabInContainerFromReferenceTab(
+        cookieStoreId,
+        activeTab,
+        overrides,
       );
     }
 
     async function openTabInContainer(cookieStoreId) {
       const activeTab = await getCurrentBrowserTab();
       return openTabInContainerFromReferenceTab(cookieStoreId, activeTab);
+    }
+
+    async function replaceTabInContainer(
+      cookieStoreId,
+      referenceTab,
+      overrides = {},
+    ) {
+      if (!referenceTab || typeof referenceTab.id !== "number") {
+        throw new Error("The source tab no longer exists.");
+      }
+
+      const createdTab = await createTabInContainerFromReferenceTab(
+        cookieStoreId,
+        referenceTab,
+        overrides,
+      );
+
+      try {
+        await browser.tabs.remove(referenceTab.id);
+      } catch (error) {
+        try {
+          await browser.tabs.remove(createdTab.id);
+        } catch (cleanupError) {
+          const rollbackError = new Error(
+            "Failed to replace the tab and remove the replacement tab.",
+          );
+          rollbackError.code = "TAB_REPLACEMENT_ROLLBACK_FAILED";
+          rollbackError.cause = error;
+          rollbackError.cleanupError = cleanupError;
+          throw rollbackError;
+        }
+        throw error;
+      }
+
+      return createdTab;
     }
 
     async function openCurrentContainerTab() {
@@ -120,12 +167,12 @@ export function createTabActions(deps) {
 
       const pinned = Boolean(activeTab.pinned);
       if (canReopenTabUrl(activeTab.url)) {
-        await openTabInContainerFromReferenceTab(cookieStoreId, activeTab, {
+        await replaceTabInContainer(cookieStoreId, activeTab, {
           pinned,
           url: activeTab.url,
         });
       } else if (isBlankTabUrl(activeTab.url)) {
-        await openTabInContainerFromReferenceTab(cookieStoreId, activeTab, {
+        await replaceTabInContainer(cookieStoreId, activeTab, {
           pinned,
         });
       } else {
@@ -138,7 +185,7 @@ export function createTabActions(deps) {
         }
 
         try {
-          await openTabInContainerFromReferenceTab(
+          await replaceTabInContainer(
             FIREFOX_DEFAULT_CONTAINER,
             activeTab,
             { pinned, url: activeTab.url },
@@ -148,7 +195,6 @@ export function createTabActions(deps) {
         }
       }
 
-      await browser.tabs.remove(activeTab.id);
       return true;
     }
 
@@ -233,6 +279,7 @@ export function createTabActions(deps) {
       openCurrentContainerTab,
       openTabInContainer,
       openTabInContainerFromReferenceTab,
+      replaceTabInContainer,
       reopenCurrentTabInContainer,
       toggleTabPinned,
       withContainer,

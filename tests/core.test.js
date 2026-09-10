@@ -1669,6 +1669,56 @@ test("reopens the current tab in another container from the queried active tab",
   assert.deepStrictEqual(browser.tabs.removed, [11]);
 });
 
+test("removes a replacement tab when the source tab cannot be closed", async () => {
+  const activeTab = {
+    id: 11,
+    active: true,
+    cookieStoreId: "firefox-container-1",
+    index: 5,
+    pinned: true,
+    url: "https://fresh.example.com",
+    windowId: 2,
+  };
+  const browser = createReopenBrowser(activeTab);
+  browser.tabs.remove = async function removeWithFailure(tabId) {
+    this.removed.push(tabId);
+    if (tabId === activeTab.id) {
+      throw new Error("Failed to close source tab");
+    }
+  };
+  const tabActions = createTabActions({ Shared, browser });
+
+  await assert.rejects(
+    tabActions.reopenCurrentTabInContainer("firefox-container-9"),
+    /Failed to close source tab/,
+  );
+  assert.deepStrictEqual(browser.tabs.removed, [11, 22]);
+});
+
+test("reports an incomplete tab replacement rollback", async () => {
+  const activeTab = {
+    id: 11,
+    active: true,
+    cookieStoreId: "firefox-container-1",
+    index: 5,
+    pinned: false,
+    url: "https://fresh.example.com",
+    windowId: 2,
+  };
+  const browser = createReopenBrowser(activeTab);
+  browser.tabs.remove = async function removeWithFailure(tabId) {
+    this.removed.push(tabId);
+    throw new Error(`Failed to close tab ${tabId}`);
+  };
+  const tabActions = createTabActions({ Shared, browser });
+
+  await assert.rejects(
+    tabActions.reopenCurrentTabInContainer("firefox-container-9"),
+    (error) => error.code === "TAB_REPLACEMENT_ROLLBACK_FAILED",
+  );
+  assert.deepStrictEqual(browser.tabs.removed, [11, 22]);
+});
+
 test("reopens blank tabs in the requested container without a URL", async () => {
   const activeTab = {
     id: 12,

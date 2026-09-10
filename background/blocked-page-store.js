@@ -366,21 +366,14 @@ export function createBlockedPageStore(deps) {
         throw new Error("The blocked tab no longer exists.");
       }
 
-      const createdTab = await browser.tabs.create(
-        tabActions.withContainer(
-          tabActions.buildTabCreateProperties(referenceTab, {
-            url: details.url,
-            index:
-              typeof referenceTab.index === "number"
-                ? referenceTab.index
-                : undefined,
-            pinned: Boolean(referenceTab.pinned),
-          }),
-          cookieStoreId,
-        ),
-      );
-      await browser.tabs.remove(referenceTab.id);
-      return createdTab;
+      return tabActions.replaceTabInContainer(cookieStoreId, referenceTab, {
+        url: details.url,
+        index:
+          typeof referenceTab.index === "number"
+            ? referenceTab.index
+            : undefined,
+        pinned: Boolean(referenceTab.pinned),
+      });
     }
 
     function scheduleAutoReopenBlockedMainFrame(decision, details) {
@@ -404,13 +397,15 @@ export function createBlockedPageStore(deps) {
           try {
             await reopenBlockedMainFrameInContainer(details, targetCookieStoreId);
           } catch (error) {
-            try {
-              await navigateTabToBlockedPage(decision, details);
-            } catch (navigationError) {
-              console.error(
-                "Failed to fall back to the blocked page after auto-reopen failure",
-                navigationError,
-              );
+            if (error && error.code !== "TAB_REPLACEMENT_ROLLBACK_FAILED") {
+              try {
+                await navigateTabToBlockedPage(decision, details);
+              } catch (navigationError) {
+                console.error(
+                  "Failed to fall back to the blocked page after auto-reopen failure",
+                  navigationError,
+                );
+              }
             }
             console.error("Failed to auto-reopen blocked navigation", error);
             return;
@@ -466,34 +461,31 @@ export function createBlockedPageStore(deps) {
         throw new Error("The blocked URL cannot be reopened in another container.");
       }
 
-      const createdTab = await browser.tabs.create(
-        tabActions.withContainer(
-          tabActions.buildTabCreateProperties(referenceTab, {
-            url: entry.url,
-            index:
-              typeof referenceTab.index === "number"
-                ? referenceTab.index
-                : undefined,
-            pinned: Boolean(referenceTab && referenceTab.pinned),
-          }),
-          cookieStoreId,
-        ),
-      );
+      const createOverrides = {
+        url: entry.url,
+        index:
+          typeof referenceTab.index === "number"
+            ? referenceTab.index
+            : undefined,
+        pinned: Boolean(referenceTab && referenceTab.pinned),
+      };
       const shouldReplaceBlockedTab =
         typeof referenceTab.url === "string" &&
         referenceTab.url.startsWith(
           browser.runtime.getURL(constants.BLOCKED_PAGE_PATH),
         );
-      if (shouldReplaceBlockedTab) {
-        try {
-          await browser.tabs.remove(referenceTab.id);
-        } catch (error) {
-          if (typeof createdTab?.id === "number") {
-            await browser.tabs.remove(createdTab.id).catch(() => undefined);
-          }
-          throw error;
-        }
-      }
+      const createdTab = shouldReplaceBlockedTab
+        ? await tabActions.replaceTabInContainer(
+            cookieStoreId,
+            referenceTab,
+            createOverrides,
+          )
+        : await browser.tabs.create(
+            tabActions.withContainer(
+              tabActions.buildTabCreateProperties(referenceTab, createOverrides),
+              cookieStoreId,
+            ),
+          );
 
       state.blockedPageEntries.delete(entryId);
       await removePersistedBlockedPageEntry(entryId).catch((error) => {

@@ -1009,6 +1009,69 @@ test("automatically reopens blocked main_frame requests when exactly one allowed
   }
 });
 
+test("removes the created tab before falling back from a failed auto-reopen", async () => {
+  const ctx = loadBackgroundModule();
+  const originalConsoleError = console.error;
+
+  try {
+    ctx.background.setContainerCache([
+      {
+        cookieStoreId: "firefox-container-1",
+        name: "Work",
+        color: "blue",
+        iconUrl: "work.svg",
+      },
+    ]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-1",
+          name: "Work only",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: ["firefox-container-1"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+    ctx.browserMock.tabs.byId.set(7, {
+      id: 7,
+      windowId: 4,
+      index: 2,
+      pinned: true,
+      url: "https://previous.example.com/",
+    });
+    ctx.browserMock.tabs.remove = async function removeWithFailure(tabId) {
+      this.removed.push(tabId);
+      if (tabId === 7) {
+        throw new Error("Failed to close source tab");
+      }
+    };
+    console.error = () => undefined;
+
+    const result = await ctx.background.enforceHostRules({
+      url: "https://example.com/account",
+      type: "main_frame",
+      cookieStoreId: "firefox-container-9",
+      tabId: 7,
+    });
+
+    assert.deepStrictEqual(result, { cancel: true });
+    assert.strictEqual(ctx.browserMock.tabs.created.length, 1);
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, [7, 99]);
+    assert.strictEqual(ctx.browserMock.tabs.updated.length, 1);
+    assert.ok(
+      ctx.browserMock.tabs.updated[0].details.url.startsWith(
+        "moz-extension://test/blocked/blocked.html?",
+      ),
+    );
+  } finally {
+    console.error = originalConsoleError;
+    ctx.cleanup();
+  }
+});
+
 test("does not fall back after an auto-reopen notification failure", async () => {
   const ctx = loadBackgroundModule();
   const originalConsoleError = console.error;
