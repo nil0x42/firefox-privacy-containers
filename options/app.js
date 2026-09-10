@@ -2426,7 +2426,11 @@ function appendCollectionMoveActions(
 
 async function moveContainerCard({ slotEntry, index, direction, card, event }) {
   const targetIndex = index + direction;
-  if (targetIndex < 0 || targetIndex >= state.containers.length) {
+  if (
+    state.containerReorderInFlight ||
+    targetIndex < 0 ||
+    targetIndex >= state.containers.length
+  ) {
     return false;
   }
 
@@ -2437,37 +2441,67 @@ async function moveContainerCard({ slotEntry, index, direction, card, event }) {
   const firefoxMoveIndex = direction < 0 ? targetIndex : index;
   captureReorderScrollAnchor("containers", card, slotEntry.cookieStoreId, event);
   captureReorderSnapshot("containers", slotEntry.cookieStoreId);
+  state.containerReorderInFlight = true;
 
   try {
-    await browser.contextualIdentities.move(
-      movedContainer.cookieStoreId,
+    const originalOrder = state.containers.map(
+      (container) => container.cookieStoreId,
+    );
+    const expectedOrder = originalOrder.slice();
+    [expectedOrder[index], expectedOrder[targetIndex]] = [
+      expectedOrder[targetIndex],
+      expectedOrder[index],
+    ];
+    const shortcutPlan = await createShortcutSwapPlan(sourceSlot, targetSlot);
+    const result = await applyContainerReorderTransaction({
+      cookieStoreId: movedContainer.cookieStoreId,
       firefoxMoveIndex,
-    );
-    const shortcutResult = await swapShortcutAssignmentsBetweenSlots(
-      sourceSlot,
-      targetSlot,
-    );
-    await notifyBackgroundContainersChanged();
-    await refreshState();
-    await renderActiveTabContent();
-    setStatus(shortcutResult.message, false);
-  } catch (error) {
-    try {
-      await withSuppressedCommandChangeEvents(async () => {
-        await browser.contextualIdentities.move(slotEntry.cookieStoreId, index);
-      });
-      await notifyBackgroundContainersChanged();
-    } catch (_) {
-      // Preserve the original failure message below.
+      originalOrder,
+      expectedOrder,
+      originalShortcuts: shortcutPlan.originalShortcuts,
+      targetShortcuts: shortcutPlan.targetShortcuts,
+    });
+    const warnings = [];
+
+    if (result.mutationAttempted) {
+      let backgroundRefreshed = false;
+      for (let attempt = 0; attempt < 2 && !backgroundRefreshed; attempt += 1) {
+        try {
+          await notifyBackgroundContainersChanged();
+          backgroundRefreshed = true;
+        } catch (_) {
+          // Retry once after Firefox has settled the container order.
+        }
+      }
+      if (!backgroundRefreshed) {
+        warnings.push("Background shortcuts could not be refreshed immediately.");
+      }
     }
-    await refreshState();
-    await renderActiveTabContent();
-    setStatus(
-      error && error.message
-        ? `${error.message} The move was reverted.`
-        : "Failed to move container. The move was reverted.",
-      true,
-    );
+
+    try {
+      await refreshState();
+      await renderActiveTabContent();
+    } catch (_) {
+      warnings.push("Reload this page to refresh the displayed order.");
+    }
+
+    if (result.committed) {
+      setStatus(
+        [shortcutPlan.message, ...warnings].join(" "),
+        warnings.length > 0,
+      );
+    } else {
+      const errorMessage = result.error?.message || "Failed to move container.";
+      const recoveryMessage = result.restored
+        ? "The move was reverted."
+        : "The previous order and shortcuts could not be fully restored. " +
+          "Reload and verify them before continuing.";
+      setStatus([errorMessage, recoveryMessage, ...warnings].join(" "), true);
+    }
+  } catch (error) {
+    setStatus(error?.message || "Failed to prepare the container move.", true);
+  } finally {
+    state.containerReorderInFlight = false;
   }
 
   return true;
@@ -3469,13 +3503,15 @@ async function importConfigurationFile(file) {
   }
 }
 
-async function swapShortcutAssignmentsBetweenSlots(slotA, slotB) {
+async function createShortcutSwapPlan(slotA, slotB) {
   const slotASupportsCommands = slotSupportsCommands(slotA);
   const slotBSupportsCommands = slotSupportsCommands(slotB);
 
   if (!slotASupportsCommands && !slotBSupportsCommands) {
     return {
       message: "Container moved.",
+      originalShortcuts: new Map(),
+      targetShortcuts: new Map(),
     };
   }
 
@@ -3483,6 +3519,8 @@ async function swapShortcutAssignmentsBetweenSlots(slotA, slotB) {
     return {
       message:
         `Container moved. Shortcut assignments only follow moves within the first ${Shortcut.SHORTCUT_SLOT_COUNT} positions.`,
+      originalShortcuts: new Map(),
+      targetShortcuts: new Map(),
     };
   }
 
@@ -3496,35 +3534,129 @@ async function swapShortcutAssignmentsBetweenSlots(slotA, slotB) {
     slotB,
     currentShortcuts,
   );
-  const changedNames = commandNames.filter(
-    (name) => (currentShortcuts.get(name) || "") !== (targetShortcuts.get(name) || ""),
-  );
+  return {
+    message: "Container moved.",
+    originalShortcuts: currentShortcuts,
+    targetShortcuts,
+  };
+}
 
-  if (!changedNames.length) {
+function containerOrderMatches(containers, expectedOrder) {
+  return (
+    containers.length === expectedOrder.length &&
+    containers.every(
+      (container, index) => container.cookieStoreId === expectedOrder[index],
+    )
+  );
+}
+
+async function shortcutSnapshotMatches(expectedShortcuts) {
+  if (!expectedShortcuts.size) {
+    return true;
+  }
+
+  const current = getCommandShortcutSnapshot(
+    Array.from(expectedShortcuts.keys()),
+    await browser.commands.getAll(),
+  );
+  return Array.from(expectedShortcuts).every(
+    ([name, shortcut]) => (current.get(name) || "") === (shortcut || ""),
+  );
+}
+
+async function applyContainerReorderTransaction({
+  cookieStoreId,
+  firefoxMoveIndex,
+  originalOrder,
+  expectedOrder,
+  originalShortcuts,
+  targetShortcuts,
+}) {
+  const [liveContainers, shortcutsUnchanged] = await Promise.all([
+    browser.contextualIdentities.query({}),
+    shortcutSnapshotMatches(originalShortcuts),
+  ]);
+  if (
+    !containerOrderMatches(liveContainers, originalOrder) ||
+    !shortcutsUnchanged
+  ) {
     return {
-      message: "Container moved.",
+      committed: false,
+      error: new Error(
+        "Firefox containers or shortcuts changed before the move could start.",
+      ),
+      mutationAttempted: false,
+      restored: true,
     };
   }
 
+  let mutationAttempted = false;
   try {
-    await withSuppressedCommandChangeEvents(() =>
-      applyShortcutSnapshot(targetShortcuts),
-    );
-  } catch (error) {
-    try {
+    mutationAttempted = true;
+    await browser.contextualIdentities.move(cookieStoreId, firefoxMoveIndex);
+    if (targetShortcuts.size) {
       await withSuppressedCommandChangeEvents(() =>
-        applyShortcutSnapshot(currentShortcuts),
+        applyShortcutSnapshot(targetShortcuts),
       );
-    } catch (_) {
-      throw new Error("Failed to swap moved shortcuts and restore the previous state.");
     }
 
-    throw error;
-  }
+    const [appliedContainers, shortcutsApplied] = await Promise.all([
+      browser.contextualIdentities.query({}),
+      shortcutSnapshotMatches(targetShortcuts),
+    ]);
+    if (
+      !containerOrderMatches(appliedContainers, expectedOrder) ||
+      !shortcutsApplied
+    ) {
+      throw new Error("Firefox did not apply the container move cleanly.");
+    }
 
-  return {
-    message: "Container moved.",
-  };
+    return {
+      committed: true,
+      error: null,
+      mutationAttempted,
+      restored: false,
+    };
+  } catch (error) {
+    let shortcutsRestored = true;
+    let containersRestored = true;
+
+    if (originalShortcuts.size) {
+      try {
+        await withSuppressedCommandChangeEvents(() =>
+          applyShortcutSnapshot(originalShortcuts),
+        );
+      } catch (_) {
+        shortcutsRestored = false;
+      }
+    }
+    try {
+      await browser.contextualIdentities.move(originalOrder, 0);
+    } catch (_) {
+      containersRestored = false;
+    }
+
+    try {
+      const [restoredContainers, restoredShortcuts] = await Promise.all([
+        browser.contextualIdentities.query({}),
+        shortcutSnapshotMatches(originalShortcuts),
+      ]);
+      containersRestored =
+        containersRestored &&
+        containerOrderMatches(restoredContainers, originalOrder);
+      shortcutsRestored = shortcutsRestored && restoredShortcuts;
+    } catch (_) {
+      containersRestored = false;
+      shortcutsRestored = false;
+    }
+
+    return {
+      committed: false,
+      error,
+      mutationAttempted,
+      restored: containersRestored && shortcutsRestored,
+    };
+  }
 }
 
 function getOrCreatePendingIdentitySave(cookieStoreId) {
@@ -6049,6 +6181,7 @@ async function main() {
 }
 
 export {
+  applyContainerReorderTransaction,
   applySameProfileContainers,
   buildInsertKeyframes,
   buildReorderKeyframes,

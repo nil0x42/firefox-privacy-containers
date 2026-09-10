@@ -124,6 +124,87 @@ function createReopenBrowser(activeTab, options = {}) {
     },
   };
 }
+
+function createContainerReorderMock(options = {}) {
+  const containers = [
+    { cookieStoreId: "container-1" },
+    { cookieStoreId: "container-2" },
+  ];
+  const shortcuts = new Map([
+    ["command-1", "Alt+1"],
+    ["command-2", "Alt+2"],
+  ]);
+  let shortcutFailurePending = Boolean(options.failShortcut);
+
+  return {
+    containers,
+    shortcuts,
+    contextualIdentities: {
+      async move(cookieStoreIds, index) {
+        if (Array.isArray(cookieStoreIds)) {
+          if (options.failOrderRestore) {
+            throw new Error("Order restore failed");
+          }
+          const byId = new Map(
+            containers.map((container) => [container.cookieStoreId, container]),
+          );
+          containers.splice(
+            0,
+            containers.length,
+            ...cookieStoreIds.map((cookieStoreId) => byId.get(cookieStoreId)),
+          );
+          return;
+        }
+        if (options.failInitialMove) {
+          throw new Error("Container move failed");
+        }
+
+        const currentIndex = containers.findIndex(
+          (container) => container.cookieStoreId === cookieStoreIds,
+        );
+        const [container] = containers.splice(currentIndex, 1);
+        containers.splice(index, 0, container);
+      },
+      async query() {
+        return containers.map((container) => ({ ...container }));
+      },
+    },
+    commands: {
+      async getAll() {
+        return Array.from(shortcuts, ([name, shortcut]) => ({ name, shortcut }));
+      },
+      async update({ name, shortcut }) {
+        if (
+          shortcutFailurePending &&
+          name === "command-2" &&
+          shortcut === "Alt+1"
+        ) {
+          shortcutFailurePending = false;
+          throw new Error("Shortcut update failed");
+        }
+        shortcuts.set(name, shortcut);
+      },
+    },
+  };
+}
+
+function createContainerReorderTransactionOptions() {
+  return {
+    cookieStoreId: "container-2",
+    firefoxMoveIndex: 0,
+    originalOrder: ["container-1", "container-2"],
+    expectedOrder: ["container-2", "container-1"],
+    originalShortcuts: new Map([
+      ["command-1", "Alt+1"],
+      ["command-2", "Alt+2"],
+    ]),
+    targetShortcuts: new Map([
+      ["command-1", "Alt+2"],
+      ["command-2", "Alt+1"],
+    ]),
+  };
+}
+
 function createTransferFixture() {
   const containers = [
     {
@@ -859,6 +940,103 @@ test("updates same-profile containers in place and can roll them back", async ()
 
   assert.deepStrictEqual(containers, createTransferFixture().containers);
   assert.deepStrictEqual(removed, []);
+});
+
+test("commits container order and shortcut changes as one transaction", async () => {
+  const { applyContainerReorderTransaction } = loadOptionsAppTestModule();
+  const mock = createContainerReorderMock();
+
+  const result = await withMockBrowser(mock, () =>
+    applyContainerReorderTransaction(createContainerReorderTransactionOptions()),
+  );
+
+  assert.strictEqual(result.committed, true);
+  assert.strictEqual(result.mutationAttempted, true);
+  assert.deepStrictEqual(
+    mock.containers.map((container) => container.cookieStoreId),
+    ["container-2", "container-1"],
+  );
+  assert.deepStrictEqual(mock.shortcuts, new Map([
+    ["command-1", "Alt+2"],
+    ["command-2", "Alt+1"],
+  ]));
+});
+
+test("does not reorder after concurrent container or shortcut changes", async () => {
+  const { applyContainerReorderTransaction } = loadOptionsAppTestModule();
+  const mock = createContainerReorderMock();
+  mock.shortcuts.set("command-1", "Alt+3");
+
+  const result = await withMockBrowser(mock, () =>
+    applyContainerReorderTransaction(createContainerReorderTransactionOptions()),
+  );
+
+  assert.strictEqual(result.committed, false);
+  assert.strictEqual(result.mutationAttempted, false);
+  assert.deepStrictEqual(
+    mock.containers.map((container) => container.cookieStoreId),
+    ["container-1", "container-2"],
+  );
+  assert.strictEqual(mock.shortcuts.get("command-1"), "Alt+3");
+});
+
+test("keeps the original state when the container move fails", async () => {
+  const { applyContainerReorderTransaction } = loadOptionsAppTestModule();
+  const mock = createContainerReorderMock({ failInitialMove: true });
+
+  const result = await withMockBrowser(mock, () =>
+    applyContainerReorderTransaction(createContainerReorderTransactionOptions()),
+  );
+
+  assert.strictEqual(result.committed, false);
+  assert.strictEqual(result.restored, true);
+  assert.deepStrictEqual(
+    mock.containers.map((container) => container.cookieStoreId),
+    ["container-1", "container-2"],
+  );
+  assert.deepStrictEqual(mock.shortcuts, new Map([
+    ["command-1", "Alt+1"],
+    ["command-2", "Alt+2"],
+  ]));
+});
+
+test("restores container order and shortcuts after a failed reorder", async () => {
+  const { applyContainerReorderTransaction } = loadOptionsAppTestModule();
+  const mock = createContainerReorderMock({ failShortcut: true });
+
+  const result = await withMockBrowser(mock, () =>
+    applyContainerReorderTransaction(createContainerReorderTransactionOptions()),
+  );
+
+  assert.strictEqual(result.committed, false);
+  assert.strictEqual(result.restored, true);
+  assert.deepStrictEqual(
+    mock.containers.map((container) => container.cookieStoreId),
+    ["container-1", "container-2"],
+  );
+  assert.deepStrictEqual(mock.shortcuts, new Map([
+    ["command-1", "Alt+1"],
+    ["command-2", "Alt+2"],
+  ]));
+});
+
+test("reports an incomplete container reorder restoration", async () => {
+  const { applyContainerReorderTransaction } = loadOptionsAppTestModule();
+  const mock = createContainerReorderMock({
+    failShortcut: true,
+    failOrderRestore: true,
+  });
+
+  const result = await withMockBrowser(mock, () =>
+    applyContainerReorderTransaction(createContainerReorderTransactionOptions()),
+  );
+
+  assert.strictEqual(result.committed, false);
+  assert.strictEqual(result.restored, false);
+  assert.deepStrictEqual(
+    mock.containers.map((container) => container.cookieStoreId),
+    ["container-2", "container-1"],
+  );
 });
 
 test("imports shortcuts independently and restores only rejected assignments", async () => {

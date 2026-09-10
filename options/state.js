@@ -28,6 +28,7 @@ export function createOptionsState() {
     dirty: false,
     suppressSaveStatus: false,
     suppressCommandChangeEvents: 0,
+    containerReorderInFlight: false,
     transferBusy: false,
     transferInstanceId: "",
     transferPlatform: "",
