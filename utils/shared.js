@@ -63,6 +63,7 @@ import {
   compileHeaderPlan,
   createHeaderId,
   headersToMultilineText,
+  isValidHeaderValue,
   mergeRequestHeaders,
   mergeRequestHeadersWithCompiledPlan,
   normalizeHeaderEntries,
@@ -711,6 +712,36 @@ import {
     const proxyIds = new Set();
     const proxyTitles = new Set();
     const hostRuleIds = new Set();
+
+    function validateHeaderValues(headers, label) {
+      if (!Array.isArray(headers)) {
+        return;
+      }
+
+      headers.forEach((header, index) => {
+        if (!isValidHeaderValue(header && header.value)) {
+          errors.push(
+            `${label} header ${index + 1} contains invalid control characters.`,
+          );
+        }
+      });
+    }
+
+    const rawConfig = config && typeof config === "object" ? config : {};
+    validateHeaderValues(rawConfig.globalHeaders, "Global");
+    if (
+      rawConfig.containerSettings &&
+      typeof rawConfig.containerSettings === "object"
+    ) {
+      Object.entries(rawConfig.containerSettings).forEach(
+        ([cookieStoreId, setting]) => {
+          validateHeaderValues(
+            setting && setting.headers,
+            `Container ${cookieStoreId}`,
+          );
+        },
+      );
+    }
 
     // The options UI persists newly created cards before required fields are filled in.
     // Save-time validation therefore enforces identity collisions only; per-card editors
@@ -1865,6 +1896,7 @@ import {
     getShortcutActivationIssue,
     getSlotNumberFromCommandName,
     headersToMultilineText,
+    isValidHeaderValue,
     hostMatchesAnyNormalizedRule,
     hostMatchesAnyRule,
     hostMatchesCompiledNormalizedHost,

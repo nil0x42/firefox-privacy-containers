@@ -1005,6 +1005,33 @@ test("reports invalid multiline headers", () => {
   ]);
 });
 
+test("rejects control characters in header values", () => {
+  for (const value of ["value\rrest", "value\0rest", "value\x1frest", "value\x7frest"]) {
+    const result = Shared.parseHeaderLines(`X-Test: ${value}`);
+
+    assert.strictEqual(result.valid, false);
+    assert.deepStrictEqual(result.errors, [
+      {
+        line: 1,
+        message: "Header value contains invalid control characters",
+      },
+    ]);
+  }
+
+  assert.strictEqual(Shared.parseHeaderLines("X-Test: \tvalue").valid, true);
+  assert.strictEqual(Shared.parseHeaderLines("X-Test:").valid, true);
+});
+
+test("drops invalid header values during defensive normalization", () => {
+  assert.deepStrictEqual(
+    Shared.normalizeHeaderEntries([
+      { id: "valid", name: "X-Valid", value: "yes" },
+      { id: "invalid", name: "X-Invalid", value: "one\r\nX-Injected: yes" },
+    ]),
+    [{ id: "valid", name: "X-Valid", value: "yes" }],
+  );
+});
+
 test("formats headers back to multiline text", () => {
   const text = Shared.headersToMultilineText([
     {

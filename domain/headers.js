@@ -2,6 +2,7 @@ import { createId } from "./ids.js";
 import { normalizeText } from "./values.js";
 
 export const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const INVALID_HEADER_VALUE_PATTERN = /[\0-\x08\x0a-\x1f\x7f]/;
 
 export function normalizeHeaderName(value) {
   const name = normalizeText(value);
@@ -12,20 +13,25 @@ export function normalizeHeaderValue(value) {
   return value == null ? "" : String(value);
 }
 
+export function isValidHeaderValue(value) {
+  return !INVALID_HEADER_VALUE_PATTERN.test(normalizeHeaderValue(value));
+}
+
 export function createHeaderId(prefix) {
   return createId(prefix || "header");
 }
 
 function normalizeHeaderEntry(entry, fallbackId) {
   const name = normalizeHeaderName(entry && entry.name);
-  if (!name) {
+  const value = normalizeHeaderValue(entry && entry.value);
+  if (!name || !isValidHeaderValue(value)) {
     return null;
   }
 
   return {
     id: normalizeText(entry && entry.id) || fallbackId || createHeaderId(),
     name,
-    value: normalizeHeaderValue(entry && entry.value),
+    value,
   };
 }
 
@@ -84,6 +90,13 @@ export function parseHeaderLines(text, existingHeaders, prefix) {
 
     const rawValue = rawLine.slice(separatorIndex + 1);
     const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+    if (!isValidHeaderValue(value)) {
+      errors.push({
+        line: lineIndex + 1,
+        message: "Header value contains invalid control characters",
+      });
+      return;
+    }
     const previous = currentHeaders[headerIndex];
 
     headers.push({

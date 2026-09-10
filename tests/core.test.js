@@ -416,6 +416,39 @@ test("validates stored configuration before writing migrations", async () => {
   );
 });
 
+test("removes invalid stored header values during initialization", async () => {
+  const stored = {
+    meta: {
+      schemaVersion: Shared.CONFIG_SCHEMA_VERSION,
+      revision: 3,
+      writer: "options",
+    },
+    config: {
+      ...Shared.createDefaultConfig(),
+      globalHeaders: [
+        { id: "valid", name: "X-Valid", value: "yes" },
+        { id: "invalid", name: "X-Invalid", value: "bad\rvalue" },
+      ],
+    },
+  };
+  const storage = createLocalStorageMock({ [Shared.CONFIG_KEY]: stored });
+  const service = createConfigService({
+    Shared,
+    browser: { storage: { local: storage } },
+    writerId: "background",
+  });
+
+  const bundle = await service.initialize();
+
+  assert.deepStrictEqual(bundle.config.globalHeaders, [
+    { id: "valid", name: "X-Valid", value: "yes" },
+  ]);
+  assert.deepStrictEqual(
+    storage.values[Shared.CONFIG_KEY].config.globalHeaders,
+    bundle.config.globalHeaders,
+  );
+});
+
 test("retries transient configuration initialization failures", async () => {
   const storage = createLocalStorageMock();
   const get = storage.get;
@@ -557,6 +590,37 @@ test("validates imported configuration envelopes and container references", () =
   assert.throws(
     () => ConfigTransfer.parseImportDocument(unknownReference, options),
     /unknown container/,
+  );
+});
+
+test("rejects invalid header values before saving or importing configuration", () => {
+  const config = Shared.createDefaultConfig();
+  config.globalHeaders = [
+    { id: "global", name: "X-Test", value: "one\r\nX-Injected: yes" },
+  ];
+  config.containerSettings = {
+    "firefox-container-1": {
+      headers: [{ id: "scoped", name: "X-Test", value: "bad\0value" }],
+    },
+  };
+
+  const validation = Shared.validateConfig(config);
+  assert.strictEqual(validation.valid, false);
+  assert.deepStrictEqual(validation.errors, [
+    "Global header 1 contains invalid control characters.",
+    "Container firefox-container-1 header 1 contains invalid control characters.",
+  ]);
+
+  const fixture = createTransferFixture();
+  fixture.document.config.globalHeaders[0].value = "bad\rvalue";
+  assert.throws(
+    () =>
+      ConfigTransfer.parseImportDocument(fixture.document, {
+        supportedColors: ["blue", "green"],
+        supportedIcons: ["briefcase", "fingerprint"],
+        commandNames: fixture.commands.map((command) => command.name),
+      }),
+    /invalid control characters/,
   );
 });
 
