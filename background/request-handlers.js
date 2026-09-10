@@ -208,13 +208,15 @@ export function createRequestHandlers(deps) {
       };
     }
 
-    function appliedProxyEndpointMatches(proxyInfo, requestInfo) {
+    function appliedProxyMatches(proxyInfo, requestInfo) {
       return Boolean(
         proxyInfo &&
           requestInfo &&
           proxyInfo.type === requestInfo.type &&
           normalizeHostRule(proxyInfo.host) === requestInfo.host &&
-          Number(proxyInfo.port) === requestInfo.port,
+          Number(proxyInfo.port) === requestInfo.port &&
+          (!Object.hasOwn(requestInfo, "proxyDNS") ||
+            Boolean(proxyInfo.proxyDNS) === requestInfo.proxyDNS),
       );
     }
 
@@ -241,7 +243,7 @@ export function createRequestHandlers(deps) {
         route.kind === ROUTE_DIRECT
           ? !proxyInfo || proxyInfo.type === "direct"
           : route.kind === ROUTE_PROXY &&
-            appliedProxyEndpointMatches(proxyInfo, route.plan.requestInfo);
+            appliedProxyMatches(proxyInfo, route.plan.requestInfo);
 
       if (!isAppliedRouteValid) {
         return {

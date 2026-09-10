@@ -753,6 +753,98 @@ test("accepts the Firefox proxy type compiled for SOCKS4a routes", () => {
   }
 });
 
+test("cancels SOCKS requests when Firefox applies the wrong DNS mode", () => {
+  const scenarios = [
+    {
+      type: "socks4",
+      configuredProxyDNS: true,
+      appliedProxyDNS: undefined,
+      mismatchedProxyDNS: true,
+      firefoxType: "socks4",
+    },
+    {
+      type: "socks4a",
+      configuredProxyDNS: false,
+      appliedProxyDNS: true,
+      mismatchedProxyDNS: false,
+      firefoxType: "socks4",
+    },
+    {
+      type: "socks",
+      configuredProxyDNS: true,
+      appliedProxyDNS: true,
+      mismatchedProxyDNS: false,
+      firefoxType: "socks",
+    },
+    {
+      type: "socks",
+      configuredProxyDNS: false,
+      appliedProxyDNS: undefined,
+      mismatchedProxyDNS: true,
+      firefoxType: "socks",
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const ctx = loadBackgroundModule();
+
+    try {
+      ctx.background.setContainerCache([]);
+      ctx.background.state.config = Shared.normalizeConfig({
+        proxies: [
+          {
+            id: "proxy-1",
+            type: scenario.type,
+            host: "127.0.0.1",
+            port: 1080,
+            proxyDNS: scenario.configuredProxyDNS,
+          },
+        ],
+        containerSettings: {
+          "firefox-container-1": {
+            proxyId: "proxy-1",
+          },
+        },
+      });
+      ctx.background.rebuildRuntime();
+      const details = {
+        url: "https://example.com/",
+        method: "GET",
+        type: "script",
+        cookieStoreId: "firefox-container-1",
+      };
+      const matchingProxyInfo = {
+        type: scenario.firefoxType,
+        host: "127.0.0.1",
+        port: 1080,
+      };
+      if (scenario.appliedProxyDNS !== undefined) {
+        matchingProxyInfo.proxyDNS = scenario.appliedProxyDNS;
+      }
+
+      assert.deepStrictEqual(
+        ctx.background.enforceHostRules({
+          ...details,
+          proxyInfo: matchingProxyInfo,
+        }),
+        {},
+      );
+      assert.deepStrictEqual(
+        ctx.background.enforceHostRules({
+          ...details,
+          proxyInfo: {
+            ...matchingProxyInfo,
+            proxyDNS: scenario.mismatchedProxyDNS,
+          },
+        }),
+        { cancel: true },
+      );
+    } finally {
+      ctx.cleanup();
+    }
+  }
+});
+
 test("blocks requests when a container references an invalid proxy", () => {
   const ctx = loadBackgroundModule();
 
