@@ -208,6 +208,16 @@ export function createRequestHandlers(deps) {
       };
     }
 
+    function appliedProxyEndpointMatches(proxyInfo, requestInfo) {
+      return Boolean(
+        proxyInfo &&
+          requestInfo &&
+          proxyInfo.type === requestInfo.type &&
+          normalizeHostRule(proxyInfo.host) === requestInfo.host &&
+          Number(proxyInfo.port) === requestInfo.port,
+      );
+    }
+
     function enforceHostRules(details) {
       if (!state.routingReady) {
         try {
@@ -231,10 +241,7 @@ export function createRequestHandlers(deps) {
         route.kind === ROUTE_DIRECT
           ? !proxyInfo || proxyInfo.type === "direct"
           : route.kind === ROUTE_PROXY &&
-            proxyInfo &&
-            proxyInfo.type === route.plan.type &&
-            normalizeHostRule(proxyInfo.host) === route.plan.host &&
-            Number(proxyInfo.port) === route.plan.port;
+            appliedProxyEndpointMatches(proxyInfo, route.plan.requestInfo);
 
       if (!isAppliedRouteValid) {
         return {
