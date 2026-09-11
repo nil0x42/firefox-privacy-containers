@@ -2360,6 +2360,21 @@ test("rejects reopening blocked urls in unauthorized containers", async () => {
 test("deduplicates only the same pending auto-reopen navigation", async () => {
   const state = {
     blockedPageEntries: new Map(),
+    runtime: Shared.compileRuntime(
+      {
+        hostRules: [
+          {
+            id: "rule-1",
+            name: "Work only",
+            enabled: true,
+            mode: "blacklist",
+            patterns: ["example.com"],
+            exceptions: ["firefox-container-1"],
+          },
+        ],
+      },
+      [],
+    ),
   };
   const browser = {
     runtime: {
@@ -2367,7 +2382,11 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
         return `moz-extension://test/${targetPath}`;
       },
     },
+    notifications: {
+      async create() {},
+    },
     tabs: {
+      created: [],
       byId: new Map([
         [
           7,
@@ -2392,6 +2411,7 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
         return this.byId.get(tabId) || null;
       },
       async create(details) {
+        this.created.push(details);
         return {
           id: 99,
           ...details,
@@ -2455,7 +2475,7 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
   assert.ok(firstAttempt);
   assert.strictEqual(
     blockedPageStore.handleAutoReopenBlockedMainFrame(decision, details),
-    false,
+    firstAttempt,
   );
   const independentAttempt =
     blockedPageStore.handleAutoReopenBlockedMainFrame(decision, {
@@ -2466,6 +2486,7 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
   assert.ok(independentAttempt);
 
   await Promise.all([firstAttempt, independentAttempt]);
+  assert.strictEqual(browser.tabs.created.length, 2);
 
   const laterAttempt = blockedPageStore.handleAutoReopenBlockedMainFrame(
     decision,
@@ -2473,6 +2494,7 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
   );
   assert.ok(laterAttempt);
   await laterAttempt;
+  assert.strictEqual(browser.tabs.created.length, 3);
 });
 
 test("validates tab placement separately from web page actions", () => {

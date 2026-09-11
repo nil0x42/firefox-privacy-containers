@@ -13,7 +13,7 @@ export function createBlockedPageStore(deps) {
       containerCache,
       tabActions,
     } = deps;
-    const pendingAutoReopenAttempts = new Set();
+    const pendingAutoReopenAttempts = new Map();
 
     function getCurrentHostRuleDecision(url, cookieStoreId) {
       const target = Shared.parseRequestTarget(url);
@@ -415,13 +415,12 @@ export function createBlockedPageStore(deps) {
         details,
         initialTargetCookieStoreId,
       );
-      if (pendingAutoReopenAttempts.has(attemptKey)) {
-        return false;
+      const pendingAttempt = pendingAutoReopenAttempts.get(attemptKey);
+      if (pendingAttempt) {
+        return pendingAttempt;
       }
 
-      pendingAutoReopenAttempts.add(attemptKey);
-
-      return Promise.resolve()
+      const attempt = Promise.resolve()
         .then(async () => {
           const current = getCurrentHostRuleDecision(
             details.url,
@@ -474,8 +473,12 @@ export function createBlockedPageStore(deps) {
           return { cancel: true };
         })
         .finally(() => {
-          pendingAutoReopenAttempts.delete(attemptKey);
+          if (pendingAutoReopenAttempts.get(attemptKey) === attempt) {
+            pendingAutoReopenAttempts.delete(attemptKey);
+          }
         });
+      pendingAutoReopenAttempts.set(attemptKey, attempt);
+      return attempt;
     }
 
     async function openBlockedUrlInContainer(message, sender) {
