@@ -47,6 +47,47 @@ async function withMockBrowser(mock, task) {
   }
 }
 
+async function withMockNavigator(mock, task) {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: mock,
+  });
+  try {
+    return await task();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(globalThis, "navigator", descriptor);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
+}
+
+function createSerializedLocksMock() {
+  let tail = Promise.resolve();
+  let active = 0;
+
+  return {
+    names: [],
+    maxActive: 0,
+    request(name, task) {
+      this.names.push(name);
+      const result = tail.then(async () => {
+        active += 1;
+        this.maxActive = Math.max(this.maxActive, active);
+        try {
+          return await task();
+        } finally {
+          active -= 1;
+        }
+      });
+      tail = result.catch(() => undefined);
+      return result;
+    },
+  };
+}
+
 function createLocalStorageMock(initial = {}) {
   const values = { ...initial };
   return {
@@ -136,11 +177,13 @@ function createContainerReorderMock(options = {}) {
   ]);
   let shortcutFailurePending = Boolean(options.failShortcut);
 
-  return {
+  const mock = {
     containers,
     shortcuts,
+    moveCalls: [],
     contextualIdentities: {
       async move(cookieStoreIds, index) {
+        mock.moveCalls.push({ cookieStoreIds, index });
         if (Array.isArray(cookieStoreIds)) {
           if (options.failOrderRestore) {
             throw new Error("Order restore failed");
@@ -180,12 +223,17 @@ function createContainerReorderMock(options = {}) {
           shortcut === "Alt+1"
         ) {
           shortcutFailurePending = false;
+          if (options.injectExternalChanges) {
+            containers.push({ cookieStoreId: "container-3" });
+            shortcuts.set("command-1", "Alt+9");
+          }
           throw new Error("Shortcut update failed");
         }
         shortcuts.set(name, shortcut);
       },
     },
   };
+  return mock;
 }
 
 function createContainerReorderTransactionOptions() {
@@ -962,6 +1010,88 @@ test("commits container order and shortcut changes as one transaction", async ()
   ]));
 });
 
+test("serializes container reorders and plans each move from current Firefox state", async () => {
+  const { reorderContainer } = loadOptionsAppTestModule();
+  const locks = createSerializedLocksMock();
+  const containers = [
+    { cookieStoreId: "container-1" },
+    { cookieStoreId: "container-2" },
+    { cookieStoreId: "container-3" },
+  ];
+  const moveCalls = [];
+  const mock = {
+    contextualIdentities: {
+      async move(cookieStoreId, index) {
+        moveCalls.push({ cookieStoreId, index });
+        const currentIndex = containers.findIndex(
+          (container) => container.cookieStoreId === cookieStoreId,
+        );
+        const [container] = containers.splice(currentIndex, 1);
+        containers.splice(index, 0, container);
+      },
+      async query() {
+        return containers.map((container) => ({ ...container }));
+      },
+    },
+    commands: {
+      async getAll() {
+        return [];
+      },
+      async update() {},
+    },
+    runtime: {
+      async sendMessage(message) {
+        assert.deepStrictEqual(message, { type: "containers-changed" });
+        return { ok: true };
+      },
+    },
+  };
+
+  const results = await withMockNavigator({ locks }, () =>
+    withMockBrowser(mock, () =>
+      Promise.all([
+        reorderContainer("container-1", 1),
+        reorderContainer("container-1", 1),
+      ]),
+    ),
+  );
+
+  assert.strictEqual(results.every((result) => result.committed), true);
+  assert.deepStrictEqual(
+    containers.map((container) => container.cookieStoreId),
+    ["container-2", "container-3", "container-1"],
+  );
+  assert.deepStrictEqual(moveCalls, [
+    { cookieStoreId: "container-2", index: 0 },
+    { cookieStoreId: "container-3", index: 1 },
+  ]);
+  assert.strictEqual(locks.maxActive, 1);
+  assert.deepStrictEqual(locks.names, [
+    "privacy-containers-container-state",
+    "privacy-containers-container-state",
+  ]);
+});
+
+test("releases the container state lock after a failed mutation", async () => {
+  const { withContainerStateLock } = loadOptionsAppTestModule();
+  const locks = createSerializedLocksMock();
+
+  await withMockNavigator({ locks }, async () => {
+    await assert.rejects(
+      withContainerStateLock(async () => {
+        throw new Error("Mutation failed");
+      }),
+      /Mutation failed/,
+    );
+    assert.strictEqual(
+      await withContainerStateLock(async () => "next mutation"),
+      "next mutation",
+    );
+  });
+
+  assert.strictEqual(locks.maxActive, 1);
+});
+
 test("does not reorder after concurrent container or shortcut changes", async () => {
   const { applyContainerReorderTransaction } = loadOptionsAppTestModule();
   const mock = createContainerReorderMock();
@@ -1036,6 +1166,30 @@ test("reports an incomplete container reorder restoration", async () => {
   assert.deepStrictEqual(
     mock.containers.map((container) => container.cookieStoreId),
     ["container-2", "container-1"],
+  );
+});
+
+test("does not overwrite unknown container or shortcut changes during rollback", async () => {
+  const { applyContainerReorderTransaction } = loadOptionsAppTestModule();
+  const mock = createContainerReorderMock({
+    failShortcut: true,
+    injectExternalChanges: true,
+  });
+
+  const result = await withMockBrowser(mock, () =>
+    applyContainerReorderTransaction(createContainerReorderTransactionOptions()),
+  );
+
+  assert.strictEqual(result.committed, false);
+  assert.strictEqual(result.restored, false);
+  assert.deepStrictEqual(
+    mock.containers.map((container) => container.cookieStoreId),
+    ["container-2", "container-1", "container-3"],
+  );
+  assert.strictEqual(mock.shortcuts.get("command-1"), "Alt+9");
+  assert.strictEqual(
+    mock.moveCalls.some(({ cookieStoreIds }) => Array.isArray(cookieStoreIds)),
+    false,
   );
 });
 
