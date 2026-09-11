@@ -15,19 +15,31 @@ export function createBlockedPageStore(deps) {
     } = deps;
     const pendingAutoReopenAttempts = new Set();
 
-    function isContainerCurrentlyAllowed(entry, cookieStoreId) {
-      const target = Shared.parseRequestTarget(entry && entry.url);
+    function getCurrentHostRuleDecision(url, cookieStoreId) {
+      const target = Shared.parseRequestTarget(url);
       const hostRuleRuntime = state.runtime && state.runtime.hostRuleRuntime;
       if (!target || !hostRuleRuntime) {
-        return false;
+        return null;
       }
 
-      const decision = Shared.getHostRuleDecisionForNormalizedHost(
-        hostRuleRuntime,
-        target.host,
+      return {
+        decision: Shared.getHostRuleDecisionForNormalizedHost(
+          hostRuleRuntime,
+          target.host,
+          cookieStoreId,
+        ),
+      };
+    }
+
+    function isContainerCurrentlyAllowed(entry, cookieStoreId) {
+      const current = getCurrentHostRuleDecision(
+        entry && entry.url,
         cookieStoreId,
       );
-      return !decision || decision.decision !== "block";
+      return Boolean(
+        current &&
+          (!current.decision || current.decision.decision !== "block"),
+      );
     }
 
     function buildAutoReopenAttemptKey(details, cookieStoreId) {
@@ -285,6 +297,13 @@ export function createBlockedPageStore(deps) {
       return `${browser.runtime.getURL(constants.BLOCKED_PAGE_PATH)}?${params.toString()}`;
     }
 
+    async function createBlockedPageRedirect(decision, details) {
+      const entryId = await createBlockedPageEntry(decision, details);
+      return {
+        redirectUrl: buildBlockedPageUrl(entryId),
+      };
+    }
+
     async function getBlockedPageContextPayload(message) {
       const entryId = normalizeText(message && message.entry);
       const entry = await getBlockedPageEntry(entryId);
@@ -361,20 +380,6 @@ export function createBlockedPageStore(deps) {
       return availableContainerIds.length === 1 ? availableContainerIds[0] : "";
     }
 
-    async function navigateTabToBlockedPage(decision, details) {
-      if (
-        typeof details.tabId !== "number"
-      ) {
-        return false;
-      }
-
-      const entryId = await createBlockedPageEntry(decision, details);
-      await browser.tabs.update(details.tabId, {
-        url: buildBlockedPageUrl(entryId),
-      });
-      return true;
-    }
-
     async function reopenBlockedMainFrameInContainer(details, cookieStoreId) {
       if (
         typeof details.tabId !== "number"
@@ -397,16 +402,19 @@ export function createBlockedPageStore(deps) {
       });
     }
 
-    function scheduleAutoReopenBlockedMainFrame(decision, details) {
-      const targetCookieStoreId = getUniqueAvailableAllowedContainerId(
+    function handleAutoReopenBlockedMainFrame(decision, details) {
+      const initialTargetCookieStoreId = getUniqueAvailableAllowedContainerId(
         decision,
         details,
       );
-      if (!targetCookieStoreId || typeof details.tabId !== "number") {
+      if (!initialTargetCookieStoreId || typeof details.tabId !== "number") {
         return false;
       }
 
-      const attemptKey = buildAutoReopenAttemptKey(details, targetCookieStoreId);
+      const attemptKey = buildAutoReopenAttemptKey(
+        details,
+        initialTargetCookieStoreId,
+      );
       if (pendingAutoReopenAttempts.has(attemptKey)) {
         return false;
       }
@@ -415,12 +423,34 @@ export function createBlockedPageStore(deps) {
 
       return Promise.resolve()
         .then(async () => {
+          const current = getCurrentHostRuleDecision(
+            details.url,
+            decision.cookieStoreId,
+          );
+          if (!current) {
+            return { cancel: true };
+          }
+          if (!current.decision || current.decision.decision !== "block") {
+            return {};
+          }
+
+          const targetCookieStoreId = getUniqueAvailableAllowedContainerId(
+            current.decision,
+            details,
+          );
+          if (!targetCookieStoreId) {
+            return createBlockedPageRedirect(current.decision, details);
+          }
+
           try {
             await reopenBlockedMainFrameInContainer(details, targetCookieStoreId);
           } catch (error) {
             if (error && error.code !== "TAB_REPLACEMENT_ROLLBACK_FAILED") {
               try {
-                await navigateTabToBlockedPage(decision, details);
+                return await createBlockedPageRedirect(
+                  current.decision,
+                  details,
+                );
               } catch (navigationError) {
                 console.error(
                   "Failed to fall back to the blocked page after auto-reopen failure",
@@ -429,13 +459,19 @@ export function createBlockedPageStore(deps) {
               }
             }
             console.error("Failed to auto-reopen blocked navigation", error);
-            return;
+            return { cancel: true };
           }
-          await showAutoReopenNotification(decision, targetCookieStoreId).catch(
-            (error) => {
-              console.error("Failed to show auto-reopen notification", error);
-            },
-          );
+          await showAutoReopenNotification(
+            current.decision,
+            targetCookieStoreId,
+          ).catch((error) => {
+            console.error("Failed to show auto-reopen notification", error);
+          });
+          return { cancel: true };
+        })
+        .catch((error) => {
+          console.error("Failed to auto-reopen blocked navigation", error);
+          return { cancel: true };
         })
         .finally(() => {
           pendingAutoReopenAttempts.delete(attemptKey);
@@ -530,10 +566,11 @@ export function createBlockedPageStore(deps) {
       cleanupBlockedPageEntries,
       cleanupPersistedEntries,
       createBlockedPageEntry,
+      createBlockedPageRedirect,
       getBlockedPageContextPayload,
       getBlockedPageEntry,
+      handleAutoReopenBlockedMainFrame,
       openBlockedUrlInContainer,
-      scheduleAutoReopenBlockedMainFrame,
       removeBlockedPageEntriesForTab,
     };
   }

@@ -270,19 +270,16 @@ export function createRequestHandlers(deps) {
       }
 
       if (details.type === "main_frame") {
-        const autoReopen = blockedPageStore.scheduleAutoReopenBlockedMainFrame(
+        const autoReopen = blockedPageStore.handleAutoReopenBlockedMainFrame(
           decision,
           details,
         );
         if (autoReopen) {
-          return autoReopen.then(() => ({ cancel: true }));
+          return autoReopen;
         }
 
         return blockedPageStore
-          .createBlockedPageEntry(decision, details)
-          .then((entryId) => ({
-            redirectUrl: blockedPageStore.buildBlockedPageUrl(entryId),
-          }))
+          .createBlockedPageRedirect(decision, details)
           .catch((error) => {
             console.error("Failed to persist blocked navigation context", error);
             return { cancel: true };

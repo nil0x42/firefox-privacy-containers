@@ -1009,6 +1009,194 @@ test("automatically reopens blocked main_frame requests when exactly one allowed
   }
 });
 
+test("does not auto-reopen a navigation that is no longer blocked", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([
+      {
+        cookieStoreId: "firefox-container-1",
+        name: "Work",
+        color: "blue",
+        iconUrl: "work.svg",
+      },
+    ]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-1",
+          name: "Work only",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: ["firefox-container-1"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+    ctx.browserMock.tabs.byId.set(7, {
+      id: 7,
+      windowId: 4,
+      index: 2,
+      pinned: false,
+    });
+
+    const pendingResult = ctx.background.enforceHostRules({
+      url: "https://example.com/account",
+      type: "main_frame",
+      cookieStoreId: "firefox-container-9",
+      tabId: 7,
+    });
+    ctx.background.state.config = Shared.normalizeConfig({ hostRules: [] });
+    ctx.background.rebuildRuntime();
+
+    assert.deepStrictEqual(await pendingResult, {});
+    assert.deepStrictEqual(ctx.browserMock.tabs.created, []);
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, []);
+    assert.deepStrictEqual(ctx.browserMock.notifications.created, []);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("uses the current allowed container for an automatic reopen", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([
+      {
+        cookieStoreId: "firefox-container-1",
+        name: "Work",
+        color: "blue",
+        iconUrl: "work.svg",
+      },
+      {
+        cookieStoreId: "firefox-container-2",
+        name: "Personal",
+        color: "red",
+        iconUrl: "personal.svg",
+      },
+    ]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-1",
+          name: "Work only",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: ["firefox-container-1"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+    ctx.browserMock.tabs.byId.set(7, {
+      id: 7,
+      windowId: 4,
+      index: 2,
+      pinned: false,
+    });
+
+    const pendingResult = ctx.background.enforceHostRules({
+      url: "https://example.com/account",
+      type: "main_frame",
+      cookieStoreId: "firefox-container-9",
+      tabId: 7,
+    });
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-2",
+          name: "Personal only",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: ["firefox-container-2"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+
+    assert.deepStrictEqual(await pendingResult, { cancel: true });
+    assert.strictEqual(
+      ctx.browserMock.tabs.created[0].cookieStoreId,
+      "firefox-container-2",
+    );
+    assert.strictEqual(
+      ctx.browserMock.notifications.created[0].details.title,
+      "Link reopened in Personal",
+    );
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("redirects to the blocked page when auto-reopen is no longer unambiguous", async () => {
+  const ctx = loadBackgroundModule();
+
+  try {
+    ctx.background.setContainerCache([
+      {
+        cookieStoreId: "firefox-container-1",
+        name: "Work",
+        color: "blue",
+        iconUrl: "work.svg",
+      },
+      {
+        cookieStoreId: "firefox-container-2",
+        name: "Personal",
+        color: "red",
+        iconUrl: "personal.svg",
+      },
+    ]);
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-1",
+          name: "Work only",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: ["firefox-container-1"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+
+    const pendingResult = ctx.background.enforceHostRules({
+      url: "https://example.com/account",
+      type: "main_frame",
+      cookieStoreId: "firefox-container-9",
+      tabId: 7,
+    });
+    ctx.background.state.config = Shared.normalizeConfig({
+      hostRules: [
+        {
+          id: "rule-2",
+          name: "Work or Personal",
+          enabled: true,
+          mode: "blacklist",
+          patterns: ["example.com"],
+          exceptions: ["firefox-container-1", "firefox-container-2"],
+        },
+      ],
+    });
+    ctx.background.rebuildRuntime();
+
+    const result = await pendingResult;
+    assert.ok(
+      result.redirectUrl.startsWith(
+        "moz-extension://test/blocked/blocked.html?",
+      ),
+    );
+    assert.deepStrictEqual(ctx.browserMock.tabs.created, []);
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, []);
+    assert.deepStrictEqual(ctx.browserMock.notifications.created, []);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
 test("removes the created tab before falling back from a failed auto-reopen", async () => {
   const ctx = loadBackgroundModule();
   const originalConsoleError = console.error;
@@ -1057,15 +1245,14 @@ test("removes the created tab before falling back from a failed auto-reopen", as
       tabId: 7,
     });
 
-    assert.deepStrictEqual(result, { cancel: true });
-    assert.strictEqual(ctx.browserMock.tabs.created.length, 1);
-    assert.deepStrictEqual(ctx.browserMock.tabs.removed, [7, 99]);
-    assert.strictEqual(ctx.browserMock.tabs.updated.length, 1);
     assert.ok(
-      ctx.browserMock.tabs.updated[0].details.url.startsWith(
+      result.redirectUrl.startsWith(
         "moz-extension://test/blocked/blocked.html?",
       ),
     );
+    assert.strictEqual(ctx.browserMock.tabs.created.length, 1);
+    assert.deepStrictEqual(ctx.browserMock.tabs.removed, [7, 99]);
+    assert.deepStrictEqual(ctx.browserMock.tabs.updated, []);
   } finally {
     console.error = originalConsoleError;
     ctx.cleanup();
@@ -2261,17 +2448,17 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
     tabId: 7,
   };
 
-  const firstAttempt = blockedPageStore.scheduleAutoReopenBlockedMainFrame(
+  const firstAttempt = blockedPageStore.handleAutoReopenBlockedMainFrame(
     decision,
     details,
   );
   assert.ok(firstAttempt);
   assert.strictEqual(
-    blockedPageStore.scheduleAutoReopenBlockedMainFrame(decision, details),
+    blockedPageStore.handleAutoReopenBlockedMainFrame(decision, details),
     false,
   );
   const independentAttempt =
-    blockedPageStore.scheduleAutoReopenBlockedMainFrame(decision, {
+    blockedPageStore.handleAutoReopenBlockedMainFrame(decision, {
       ...details,
       requestId: "independent-request",
       tabId: 8,
@@ -2280,7 +2467,7 @@ test("deduplicates only the same pending auto-reopen navigation", async () => {
 
   await Promise.all([firstAttempt, independentAttempt]);
 
-  const laterAttempt = blockedPageStore.scheduleAutoReopenBlockedMainFrame(
+  const laterAttempt = blockedPageStore.handleAutoReopenBlockedMainFrame(
     decision,
     details,
   );
