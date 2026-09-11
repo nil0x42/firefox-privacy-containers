@@ -160,3 +160,104 @@ test("renders a validated blocked-page context as real destination links", async
     delete globalThis.window;
   }
 });
+
+test("keeps container diagnostics visible without an available action", async (t) => {
+  const html = fs.readFileSync(
+    path.join(__dirname, "..", "blocked", "blocked.html"),
+    "utf8",
+  );
+  const scenarios = [
+    {
+      name: "unavailable container",
+      unavailableAllowedContainers: [{ name: "Work" }],
+      noLongerAllowedContainers: [],
+      message: "Unavailable right now: Work.",
+      hidden: false,
+    },
+    {
+      name: "disallowed container",
+      unavailableAllowedContainers: [],
+      noLongerAllowedContainers: [{ name: "Personal" }],
+      message: "No longer allowed: Personal.",
+      hidden: false,
+    },
+    {
+      name: "mixed diagnostics",
+      unavailableAllowedContainers: [{ name: "Work" }],
+      noLongerAllowedContainers: [{ name: "Personal" }],
+      message: "Unavailable right now: Work. No longer allowed: Personal.",
+      hidden: false,
+    },
+    {
+      name: "no container information",
+      unavailableAllowedContainers: [],
+      noLongerAllowedContainers: [],
+      message: "",
+      hidden: true,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      const dom = new JSDOM(html, {
+        url: "moz-extension://test/blocked/blocked.html?entry=blocked-3",
+      });
+      const documentValue = dom.window.document;
+      globalThis.window = dom.window;
+      globalThis.document = documentValue;
+      globalThis.HTMLButtonElement = dom.window.HTMLButtonElement;
+      globalThis.HTMLInputElement = dom.window.HTMLInputElement;
+      globalThis.browser = {
+        runtime: {
+          async sendMessage() {
+            return {
+              context: {
+                allowedContainers: [],
+                container: { name: "Default" },
+                entry: "blocked-3",
+                host: "example.com",
+                mode: "blacklist",
+                ruleName: "Limited access",
+                unavailableAllowedContainers:
+                  scenario.unavailableAllowedContainers,
+                noLongerAllowedContainers:
+                  scenario.noLongerAllowedContainers,
+                url: "https://example.com/account",
+              },
+            };
+          },
+        },
+      };
+
+      try {
+        await init();
+
+        const section = documentValue.getElementById(
+          "blocked-allowed-section",
+        );
+        assert.strictEqual(section.hidden, scenario.hidden);
+        assert.strictEqual(
+          documentValue.getElementById("blocked-unavailable").textContent,
+          scenario.message,
+        );
+        assert.strictEqual(
+          documentValue.getElementById("blocked-allowed-list").childElementCount,
+          0,
+        );
+        if (!scenario.hidden) {
+          assert.strictEqual(
+            section.querySelector(".blocked-actions-copy").textContent,
+            "No container from the original rule can be used now.",
+          );
+        }
+      } finally {
+        dom.window.close();
+        delete globalThis.browser;
+        delete globalThis.document;
+        delete globalThis.HTMLButtonElement;
+        delete globalThis.HTMLInputElement;
+        delete globalThis.window;
+      }
+    });
+  }
+});

@@ -255,25 +255,41 @@
     const allowedSection = document.getElementById("blocked-allowed-section");
     const allowedList = document.getElementById("blocked-allowed-list");
     const unavailableNode = document.getElementById("blocked-unavailable");
+    const allowedContainers = Array.isArray(context.allowedContainers)
+      ? context.allowedContainers
+      : [];
+    const unavailableContainers = Array.isArray(
+      context.unavailableAllowedContainers,
+    )
+      ? context.unavailableAllowedContainers
+      : [];
+    const noLongerAllowedContainers = Array.isArray(
+      context.noLongerAllowedContainers,
+    )
+      ? context.noLongerAllowedContainers
+      : [];
     const shouldShowActions =
+      context.mode === "blacklist" && allowedContainers.length > 0;
+    const shouldShowDiagnostics =
       context.mode === "blacklist" &&
-      Array.isArray(context.allowedContainers) &&
-      context.allowedContainers.length > 0;
+      (unavailableContainers.length > 0 ||
+        noLongerAllowedContainers.length > 0);
 
     if (allowedSection && allowedList) {
-      allowedSection.hidden = !shouldShowActions;
+      allowedSection.hidden = !shouldShowActions && !shouldShowDiagnostics;
       allowedList.textContent = "";
 
-      if (shouldShowActions) {
-        const allowedNames = context.allowedContainers
-          .map((entry) => entry.name)
-          .join(", ");
-        const copy = allowedSection.querySelector(".blocked-actions-copy");
-        if (copy) {
-          copy.textContent = `This Host Rule only allows this host in: ${allowedNames}. Choosing one replaces this blocked tab.`;
-        }
+      const copy = allowedSection.querySelector(".blocked-actions-copy");
+      if (copy) {
+        copy.textContent = shouldShowActions
+          ? `This Host Rule only allows this host in: ${allowedContainers
+              .map((entry) => entry.name)
+              .join(", ")}. Choosing one replaces this blocked tab.`
+          : "No container from the original rule can be used now.";
+      }
 
-        context.allowedContainers.forEach((entry) => {
+      if (shouldShowActions) {
+        allowedContainers.forEach((entry) => {
           allowedList.appendChild(
             createAllowedContainerButton(entry, context.entry, context.url),
           );
@@ -281,21 +297,19 @@
       }
 
       if (unavailableNode) {
-        const missing = Array.isArray(context.unavailableAllowedContainers)
-          ? context.unavailableAllowedContainers
-          : [];
-        const disallowed = Array.isArray(context.noLongerAllowedContainers)
-          ? context.noLongerAllowedContainers
-          : [];
         const messages = [];
-        if (missing.length) {
+        if (unavailableContainers.length) {
           messages.push(
-            `Unavailable right now: ${missing.map((entry) => entry.name).join(", ")}.`,
+            `Unavailable right now: ${unavailableContainers
+              .map((entry) => entry.name)
+              .join(", ")}.`,
           );
         }
-        if (disallowed.length) {
+        if (noLongerAllowedContainers.length) {
           messages.push(
-            `No longer allowed: ${disallowed.map((entry) => entry.name).join(", ")}.`,
+            `No longer allowed: ${noLongerAllowedContainers
+              .map((entry) => entry.name)
+              .join(", ")}.`,
           );
         }
         unavailableNode.hidden = messages.length === 0;
