@@ -1,59 +1,57 @@
 # Privacy Containers
 
-**Per-container proxy routing, request controls, and shortcuts for Firefox.**
+**Separate Firefox sessions, with a proxy and rules for each container.**
 
-Privacy Containers is a Firefox extension for web testing and multi-account
-work. Each container gets its own route, headers, and access rules.
+Test a site through an intercepting proxy in one container, stay signed in to
+another account in a second, and browse normally in a regular tab. Set the
+route, request headers, and site access rules for each container.
 
-Route a client session through an intercepting proxy, keep another account
-direct, and leave everyday browsing untouched—all in the same Firefox window.
-
-https://addons.mozilla.org/addon/privacy-containers/
+[Get Privacy Containers for Firefox](https://addons.mozilla.org/addon/privacy-containers/)
 
 ![Privacy Containers configuration overview](.github/images/configuration-overview.png)
 
 ## What it does
 
-- Routes each container directly or through reusable HTTP, HTTPS, or SOCKS
-  proxies, with remote DNS, HTTP/HTTPS authentication, and proxy bypass rules
-  when needed.
-- Shows at a glance whether the current tab is using a proxy.
-- Adds request headers globally or per container, including the
-  PwnFox-compatible `X-PwnFox-Color` header.
-- Uses Host Rules to keep selected hosts in the right containers. A blocked
-  link can be reopened directly in an allowed one.
-- Opens or reopens tabs in a chosen container, with configurable shortcuts for
-  switching, moving, and pinning tabs.
-- Imports and exports its configuration as JSON.
+- Give each container a direct connection or a reusable HTTP, HTTPS, or SOCKS
+  proxy. Add remote DNS, HTTP/HTTPS authentication, and bypass rules when needed.
+- See at a glance which tabs have a proxy assigned, then check the current
+  page's route in the popup.
+- Add request headers globally or per container, including the PwnFox-compatible
+  `X-PwnFox-Color` header.
+- Use Host Rules to allow or block sites by container. Reopen a blocked link in
+  an allowed container.
+- Open or reopen tabs in a chosen container. Set shortcuts for those actions,
+  or to switch, move, or pin tabs.
+- Export and import settings as JSON.
 
 ![Host Rules limiting sites to selected containers](.github/images/host-rules-configuration.png)
 
 ## Useful tools in the popup
 
-The toolbar popup shows the current container, main-page route, matching Host
-Rule, cookies, and effective headers. Linked names open the corresponding
-configuration card in a background tab.
+The popup shows the current tab's container, main-page route, matching Host
+Rule, cookie count, and effective headers. Click a linked name to open its
+settings.
 
-It can also fix common page annoyances without opening DevTools:
+For the current page, you can also:
 
-- bypass blocked paste and text selection;
+- bypass blocked paste or text selection;
 - re-enable disabled form fields;
-- clear local storage, session storage, or cookies for the current page.
+- clear local storage, session storage, or cookies.
 
 ![Quick page tools in the toolbar popup](.github/images/toolbar-popup.png)
 
 ## Get started
 
 1. Open **Containers & proxies config** from the toolbar popup.
-2. Create or reuse a Firefox Container and assign a proxy if it needs one.
+2. Create or reuse a Firefox Container, then assign a proxy if you need one.
 3. Open a tab in that container. Its route applies immediately.
 
-Add headers, Host Rules, or shortcuts only when you need them.
+Add headers, Host Rules, and shortcuts as needed.
 
 ## Privacy
 
 There is no account, telemetry, cloud service, or remotely loaded code. Settings
-stay in Firefox, and only containers you assign to a proxy use it.
+stay in Firefox. Only containers you assign to a proxy use it.
 
 ## Requirements and license
 
