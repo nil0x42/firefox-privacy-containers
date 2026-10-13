@@ -22,7 +22,7 @@ MOZ_WEBRENDER=0 ./node_modules/.bin/web-ext run \
 runner_pid=$!
 
 for ((attempt = 0; attempt < 150; attempt += 1)); do
-  if rg -q "Installed .* as a temporary add-on" "$output_file"; then
+  if grep -q "Installed .* as a temporary add-on" "$output_file"; then
     sed -n '1,$p' "$output_file"
     exit 0
   fi
