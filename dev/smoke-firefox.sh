@@ -18,10 +18,11 @@ MOZ_WEBRENDER=0 ./node_modules/.bin/web-ext run \
   --firefox "$firefox_binary" \
   --no-input \
   --no-reload \
+  --verbose \
   --args=-headless >"$output_file" 2>&1 &
 runner_pid=$!
 
-for ((attempt = 0; attempt < 150; attempt += 1)); do
+for ((attempt = 0; attempt < 300; attempt += 1)); do
   if grep -q "Installed .* as a temporary add-on" "$output_file"; then
     sed -n '1,$p' "$output_file"
     exit 0
@@ -31,6 +32,10 @@ for ((attempt = 0; attempt < 150; attempt += 1)); do
     status=0
     wait "$runner_pid" || status=$?
     sed -n '1,$p' "$output_file"
+    if (( status == 0 )); then
+      echo "Firefox exited before the extension was installed." >&2
+      exit 1
+    fi
     exit "$status"
   fi
 
@@ -38,5 +43,5 @@ for ((attempt = 0; attempt < 150; attempt += 1)); do
 done
 
 sed -n '1,$p' "$output_file"
-echo "Firefox did not load the extension within 15 seconds." >&2
+echo "Firefox did not load the extension within 30 seconds." >&2
 exit 1

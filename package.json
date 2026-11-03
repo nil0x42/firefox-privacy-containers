@@ -18,6 +18,7 @@
     "package": "bash dev/package-addon.sh",
     "package:check": "bash dev/check-package.sh",
     "smoke:firefox": "bash dev/smoke-firefox.sh",
+    "test:firefox": "npm run package && node dev/test-firefox.js",
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {

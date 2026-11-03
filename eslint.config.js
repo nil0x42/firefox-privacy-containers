@@ -24,6 +24,10 @@ const browserGlobals = {
 
 export default [
   {
+    files: ["tests/firefox/**/*.js"],
+    languageOptions: { globals: { ...browserGlobals, fetch: "readonly" } },
+  },
+  {
     ignores: [
       ".understand-anything/**",
       "dist/**",
