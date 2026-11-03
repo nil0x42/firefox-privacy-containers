@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Privacy Containers",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Isolated browser containers with per-container proxy routing",
   "icons": {
     "48": "res/icon-48.png",

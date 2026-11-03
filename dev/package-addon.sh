@@ -44,7 +44,8 @@ find "$stage_dir" -type f -exec chmod 0644 -- {} +
 mkdir -p dist
 archive="privacy-containers-${current_version}.xpi"
 archive_path="$root_dir/dist/$archive"
-web-ext lint --source-dir "$stage_dir"
+
+"$root_dir/node_modules/.bin/web-ext" lint --source-dir "$stage_dir"
 rm -f -- "$archive_path"
 (
   cd "$stage_dir"
